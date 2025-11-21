@@ -1,0 +1,3 @@
+[console_scripts]
+cemc-rates = cemc_rates.cli:main
+
