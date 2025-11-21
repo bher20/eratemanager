@@ -16,9 +16,9 @@ from typing import Any, Dict
 
 import requests
 
-from cemc_rates.downloader import download_pdf
-from cemc_rates.parser import parse_pdf
-from cemc_rates.diffing import (
+from eratemanager.downloader import download_pdf
+from eratemanager.parser import parse_pdf
+from eratemanager.diffing import (
     DEFAULT_SNAPSHOT_PATH,
     load_snapshot,
     extract_residential_summary,

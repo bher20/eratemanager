@@ -166,6 +166,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_snap_create.set_defaults(func=cmd_snapshot_create)
 
+        # refresh-pdf
+    p_refresh = subparsers.add_parser(
+        "refresh-pdf",
+        help="Force download of the latest CEMC PDF into the cache.",
+    )
+    p_refresh.set_defaults(func=cmd_refresh_pdf)
+
+
     return parser
 
 
@@ -186,3 +194,9 @@ def main() -> None:
 
     code = func(args)
     raise SystemExit(code)
+
+def cmd_refresh_pdf(args: argparse.Namespace) -> int:
+    """Refresh the PDF by forcing a re-download into the cache directory."""
+    pdf_path = download_pdf(force=True)
+    print(f"PDF refreshed: {pdf_path}")
+    return 0

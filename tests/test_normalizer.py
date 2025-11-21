@@ -1,6 +1,6 @@
-from cemc_rates.downloader import download_pdf
-from cemc_rates.normalizer import normalize
-from cemc_rates.parser import parse_pdf
+from eratemanager.downloader import download_pdf
+from eratemanager.normalizer import normalize
+from eratemanager.parser import parse_pdf
 
 
 def test_normalizer_structure():

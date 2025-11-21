@@ -1,5 +1,5 @@
-from cemc_rates.downloader import download_pdf
-from cemc_rates.parser import parse_pdf
+from eratemanager.downloader import download_pdf
+from eratemanager.parser import parse_pdf
 
 
 def test_parse_pdf_runs():

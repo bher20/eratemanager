@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cemc-rate-parser"
+name = "eratemanager"
 version = "0.1.0"
 description = "Automated parser and normalized API for CEMC residential energy rate schedules."
 readme = "README.md"
@@ -29,7 +29,7 @@ package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cemc_rates*"]
+include = ["eratemanager*"]
 
 [project.scripts]
-cemc-rates = "cemc_rates.cli:main"
+cemc-rates = "eratemanager.cli:main"
