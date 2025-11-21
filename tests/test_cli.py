@@ -5,7 +5,7 @@ from pathlib import Path
 
 def run_cli(args):
     """Run the installed CLI and return stdout."""
-    cmd = [sys.executable, "-m", "cemc_rates.cli"] + args
+    cmd = [sys.executable, "-m", "eratemanager.cli"] + args
     out = subprocess.check_output(cmd, text=True)
     return out
 
@@ -24,11 +24,11 @@ def test_cli_residential_outputs_cents(monkeypatch):
     # Mock normalization pipeline
     monkeypatch.setenv("CEMC_RATES_TEST_MODE", "1")
     monkeypatch.setattr(
-        "cemc_rates.cli._load_current_parsed",
+        "eratemanager.cli._load_current_parsed",
         lambda *a, **kw: {"fake": True}
     )
     monkeypatch.setattr(
-        "cemc_rates.cli.normalize",
+        "eratemanager.cli.normalize",
         lambda *a, **kw: {"rates": sample_json}
     )
 

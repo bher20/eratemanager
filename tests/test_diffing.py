@@ -1,4 +1,4 @@
-from cemc_rates.diffing import (
+from eratemanager.diffing import (
     extract_residential_summary,
     diff_summaries,
     format_changes_console,

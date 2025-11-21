@@ -1,2 +1,0 @@
-cemc_rates
-tests
