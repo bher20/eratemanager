@@ -46,8 +46,8 @@ func ParseCEMCRatesFromText(text string) (*RatesResponse, error) {
     }
 
     custRe := regexp.MustCompile(`Customer Charge:\s*\$?([0-9]+(?:\.[0-9]+)?)`)
-    energyRe := regexp.MustCompile(`Energy Charge:\s*\.?(\d+(?:\.\d+)?)\$?\s*per kWh`)
-    fuelRe := regexp.MustCompile(`TVA Fuel Charge:\s*\.?(\d+(?:\.\d+)?)\$?\s*per kWh`)
+    energyRe := regexp.MustCompile(`Energy Charge:\s*(\d+\.\d+|\.\d+|\d+)\$?\s*per kWh`)
+    fuelRe := regexp.MustCompile(`TVA Fuel Charge:\s*(\d+\.\d+|\.\d+|\d+)\$?\s*per kWh`)
 
     customerCharge := parseFirstFloat(custRe, rsSection)
     energyRate := parseFirstFloat(energyRe, rsSection)
