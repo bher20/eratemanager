@@ -12,6 +12,7 @@ import (
 
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
+	"github.com/bher20/eratemanager/internal/ui"
 )
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
@@ -60,6 +61,16 @@ func NewMux() *http.ServeMux {
 	// Internal refresh endpoint for CronJobs / manual refresh.
 	RegisterRefreshHandler(mux)
 	RegisterProvidersHandler(mux)
+
+	// Web UI
+	mux.Handle("/ui/", http.StripPrefix("/ui/", ui.Handler()))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+	})
 
 	return mux
 }
