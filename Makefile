@@ -1,112 +1,39 @@
-# --------------------------------------------
-# Project variables
-# --------------------------------------------
 APP_NAME        := eratemanager
-IMAGE_REGISTRY  := ghcr.io
-IMAGE_OWNER     := bher20
-IMAGE_NAME      := $(APP_NAME)
-IMAGE_TAG       := 0.1.0
-IMAGE_URI       := $(IMAGE_REGISTRY)/$(IMAGE_OWNER)/$(IMAGE_NAME):$(IMAGE_TAG)
+IMAGE_REPO      := ghcr.io/bher20/eratemanager
+IMAGE_TAG       := latest
 
-CHART_DIR       := helm/eratemanager
-CHART_PACKAGE   := $(APP_NAME)-chart-$(IMAGE_TAG).tgz
-CHART_REPO      := oci://$(IMAGE_REGISTRY)/$(IMAGE_OWNER)/charts
-CHART_VERSION   := $(IMAGE_TAG)
+HELM_CHART_DIR  := helm/eratemanager
 
-PYTHON          := python3
+BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo docker)
 
-
-# --------------------------------------------
-# Container image build/push
-# --------------------------------------------
-
-# Auto-detect podman/buildah/docker
-ENGINE := $(shell command -v buildah 2>/dev/null || command -v podman 2>/dev/null || command -v docker 2>/dev/null)
-
-.PHONY: image
-image:
-	@echo ">>> Building image with: $(ENGINE)"
-	$(ENGINE) build -t $(IMAGE_URI) -f Containerfile .
-
-.PHONY: image-push
-image-push:
-	@echo ">>> Pushing image: $(IMAGE_URI)"
-	$(ENGINE) push $(IMAGE_URI)
-
-
-# --------------------------------------------
-# Helm packaging & publishing
-# --------------------------------------------
-
-.PHONY: helm-package
-helm-package:
-	@echo ">>> Packaging Helm chart"
-	helm package $(CHART_DIR) --version $(CHART_VERSION) --app-version $(IMAGE_TAG) -d ./helm
-
-.PHONY: helm-push
-helm-push: helm-package
-	@echo ">>> Logging into Helm registry"
-	echo $$GITHUB_TOKEN | helm registry login $(IMAGE_REGISTRY) --username $(IMAGE_OWNER) --password-stdin
-
-	@echo ">>> Pushing chart to: $(CHART_REPO)"
-	helm push ./helm/$(APP_NAME)-$(CHART_VERSION).tgz $(CHART_REPO)
-
-
-# --------------------------------------------
-# Python commands
-# --------------------------------------------
-
-.PHONY: install
-install:
-	$(PYTHON) -m pip install -e ".[dev]"
+.PHONY: build
+build:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/$(APP_NAME) ./cmd/$(APP_NAME)
 
 .PHONY: test
 test:
-	pytest -v
+	go test ./...
 
-.PHONY: run
-run:
-	uvicorn cemc_rates.api:app --host 0.0.0.0 --port 8000 --reload
+.PHONY: build-image
+build-image:
+	@echo "==> Building container image using $(BUILDER)..."
+ifeq ($(BUILDER),buildah)
+	buildah bud -f Containerfile -t $(IMAGE_REPO):$(IMAGE_TAG) .
+else
+	docker build -f Containerfile -t $(IMAGE_REPO):$(IMAGE_TAG) .
+endif
 
+.PHONY: push-image
+push-image:
+ifeq ($(BUILDER),buildah)
+	buildah push $(IMAGE_REPO):$(IMAGE_TAG)
+else
+	docker push $(IMAGE_REPO):$(IMAGE_TAG)
+endif
 
-# --------------------------------------------
-# Kubernetes deployment
-# --------------------------------------------
-
-.PHONY: deploy
-deploy:
-	helm upgrade --install $(APP_NAME) $(CHART_DIR) \
-		--set image.repository=$(IMAGE_REGISTRY)/$(IMAGE_OWNER)/$(IMAGE_NAME) \
-		--set image.tag=$(IMAGE_TAG)
-
-.PHONY: undeploy
-undeploy:
-	helm uninstall $(APP_NAME)
-
-
-# --------------------------------------------
-# Formatting / Linting
-# --------------------------------------------
-
-.PHONY: fmt
-fmt:
-	black cemc_rates tests tools
-
-.PHONY: lint
-lint:
-	flake8 cemc_rates tests tools || true
-
-
-# --------------------------------------------
-# Cleanup
-# --------------------------------------------
-
-.PHONY: clean
-clean:
-	rm -rf build dist *.egg-info .pytest_cache
-	find . -name "__pycache__" -type d -exec rm -rf {} +
-
-.PHONY: clean-helm
-clean-helm:
-	rm -f ./helm/*.tgz
-
+.PHONY: helm-upgrade
+helm-upgrade:
+	helm upgrade --install $(APP_NAME) $(HELM_CHART_DIR) \
+		--set image.repository=$(IMAGE_REPO) \
+		--set image.tag=$(IMAGE_TAG) \
+		$(EXTRA_ARGS)
