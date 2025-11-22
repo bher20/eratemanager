@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>eRateManager React UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .shell {
+      max-width: 960px;
+      margin: 1.5rem auto;
+      padding: 1.25rem;
+      border-radius: 0.9rem;
+      background: #020617;
+      border: 1px solid #1f2937;
+      box-shadow: 0 18px 35px rgba(0,0,0,0.7);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.2rem;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 0.25rem;
+    }
+    select, button {
+      font: inherit;
+      border-radius: 999px;
+      border: 1px solid #374151;
+      padding: 0.35rem 0.7rem;
+      background: #020617;
+      color: inherit;
+      outline: none;
+    }
+    select:focus, button:focus {
+      border-color: #3b82f6;
+    }
+    button {
+      cursor: pointer;
+    }
+    button + button {
+      margin-left: 0.5rem;
+    }
+    pre {
+      margin-top: 0.8rem;
+      padding: 0.7rem 0.8rem;
+      border-radius: 0.6rem;
+      background: #020617;
+      border: 1px solid #1f2937;
+      font-size: 0.78rem;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+    .status {
+      font-size: 0.8rem;
+      margin-top: 0.3rem;
+      min-height: 1.1em;
+    }
+    .status.ok { color: #22c55e; }
+    .status.error { color: #f97373; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.7rem;
+      margin-top: 0.75rem;
+    }
+    .summary-item {
+      background: #020617;
+      border-radius: 0.6rem;
+      border: 1px solid #1f2937;
+      padding: 0.55rem 0.6rem;
+      font-size: 0.8rem;
+    }
+    .summary-item .label {
+      opacity: 0.7;
+      font-size: 0.76rem;
+    }
+    .summary-item .value {
+      margin-top: 0.18rem;
+      font-weight: 600;
+    }
+    .muted {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      margin-top: 0.5rem;
+    }
+    a {
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script type="text/javascript">
+    const e = React.createElement;
+
+    function useAsync(fn, deps) {
+      const [state, setState] = React.useState({ loading: true, error: null, value: null });
+      React.useEffect(() => {
+        let cancelled = false;
+        setState({ loading: true, error: null, value: null });
+        fn().then(
+          value => !cancelled && setState({ loading: false, error: null, value }),
+          error => !cancelled && setState({ loading: false, error, value: null }),
+        );
+        return () => { cancelled = true; };
+      }, deps);
+      return state;
+    }
+
+    function Summary({ data }) {
+      if (!data || !data.rates) return null;
+      const r = data.rates;
+      const rs = r.residential_standard || r.residentialStandard || {};
+      const energy = rs.energy_rate_usd_per_kwh ?? rs.energyRateUSDPerKWh ?? null;
+      const fuel = rs.tva_fuel_rate_usd_per_kwh ?? rs.tvaFuelRateUSDPerKWh ?? null;
+      const cust = rs.customer_charge_monthly_usd ?? rs.customerChargeMonthlyUSD ?? null;
+      const total = (energy || 0) + (fuel || 0);
+      const items = [];
+      if (cust != null) items.push(["Customer", `$${cust.toFixed(2)}/mo`]);
+      if (energy != null) items.push(["Energy", `${energy.toFixed(5)} $/kWh`]);
+      if (fuel != null) items.push(["Fuel", `${fuel.toFixed(5)} $/kWh`]);
+      if (total > 0) items.push(["Total", `${total.toFixed(5)} $/kWh`]);
+      return e("div", { className: "summary" },
+        items.map(([label, value]) =>
+          e("div", { key: label, className: "summary-item" },
+            e("div", { className: "label" }, label),
+            e("div", { className: "value" }, value),
+          )
+        )
+      );
+    }
+
+    function App() {
+      const [providers, setProviders] = React.useState([]);
+      const [provider, setProvider] = React.useState("");
+      const [status, setStatus] = React.useState("");
+      const [statusClass, setStatusClass] = React.useState("");
+      const [data, setData] = React.useState(null);
+      const [loading, setLoading] = React.useState(false);
+
+      React.useEffect(() => {
+        fetch("/providers")
+          .then(r => r.json())
+          .then(j => {
+            const arr = j.providers || j.Providers || [];
+            setProviders(arr);
+            if (arr.length) setProvider(arr[0].key);
+          })
+          .catch(err => {
+            setStatus("Failed to load providers: " + err.message);
+            setStatusClass("error");
+          });
+      }, []);
+
+      function loadRates() {
+        if (!provider) return;
+        setLoading(true);
+        setStatus("Loading rates for " + provider + "…");
+        setStatusClass("");
+        fetch("/rates/" + encodeURIComponent(provider) + "/residential")
+          .then(r => {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(j => {
+            setData(j);
+            setStatus("Loaded rates.");
+            setStatusClass("ok");
+          })
+          .catch(err => {
+            setStatus("Failed to load rates: " + err.message);
+            setStatusClass("error");
+          })
+          .finally(() => setLoading(false));
+      }
+
+      function refreshProvider() {
+        if (!provider) return;
+        setLoading(true);
+        setStatus("Refreshing PDF for " + provider + "…");
+        setStatusClass("");
+        fetch("/refresh/" + encodeURIComponent(provider), { method: "POST" })
+          .then(r => {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(j => {
+            if (j.status === "ok") {
+              setStatus("Refresh succeeded. New PDF URL: " + (j.pdf_url || j.pdfUrl || "n/a"));
+              setStatusClass("ok");
+            } else {
+              setStatus("Refresh failed: " + (j.error || "unknown error"));
+              setStatusClass("error");
+            }
+          })
+          .catch(err => {
+            setStatus("Refresh failed: " + err.message);
+            setStatusClass("error");
+          })
+          .finally(() => setLoading(false));
+      }
+
+      return e("div", { className: "shell" },
+        e("h1", null, "eRateManager React UI"),
+        e("p", { className: "muted" },
+          "Thin React wrapper around the same JSON APIs as the main dashboard. ",
+          e("a", { href: "index.html" }, "Back to dashboard")
+        ),
+        e("div", null,
+          e("label", { htmlFor: "providerSelect" }, "Provider"),
+          e("select", {
+            id: "providerSelect",
+            value: provider,
+            onChange: e2 => setProvider(e2.target.value),
+          },
+            providers.map(p =>
+              e("option", { key: p.key, value: p.key }, p.name || p.key)
+            )
+          )
+        ),
+        e("div", { className: "row" },
+          e("button", { onClick: loadRates, disabled: loading }, "Load"),
+          e("button", { onClick: refreshProvider, disabled: loading }, "Refresh PDF")
+        ),
+        e("div", { className: "status " + statusClass }, status),
+        e(Summary, { data }),
+        e("pre", null, data ? JSON.stringify(data, null, 2) : "No data yet.")
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(e(App));
+  </script>
+</body>
+</html>
