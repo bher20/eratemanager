@@ -1,0 +1,8 @@
+suite: CronJob tests
+templates:
+  - templates/cronjobs.yaml
+tests:
+  - it: should create a CronJob per provider
+    asserts:
+      - hasDocuments:
+          count: 2
