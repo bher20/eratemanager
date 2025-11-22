@@ -1,110 +1,49 @@
-replicaCount: 2
-
 image:
   repository: ghcr.io/bher20/eratemanager
-  tag: "0.1.0"
+  tag: latest
   pullPolicy: IfNotPresent
 
-imagePullSecrets: []
-  # - name: my-registry-secret
-
-serviceAccount:
-  create: true
-  name: ""
-  annotations: {}
-
-podAnnotations: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # runAsNonRoot: true
-  # runAsUser: 1000
+replicaCount: 1
 
 service:
   type: ClusterIP
   port: 80
-  targetPort: 8000
-  annotations: {}
 
-# Gateway API routing configuration.
-# Assumes a Gateway named "public-gateway" already exists and is configured
-# with TLS termination using a wildcard certificate for *.herringhome.com.
-gatewayAPI:
-  enabled: true
-  gatewayName: public-gateway
-  gatewayNamespace: default
-  hostname: "rates.herringhome.com"
+app:
+  port: 8000
 
-# Persistence for the PDF cache directory (.cache_cemc)
+providers:
+  - key: cemc
+  - key: nes
+
 persistence:
   enabled: true
-  mountPath: /app/.cache_cemc
   size: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: ""
-  existingClaim: ""
+  mountPath: /data
 
-# CronJob to periodically refresh the PDF cache by calling
-# `cemc-rates refresh-pdf` inside a short-lived pod.
-cronjob:
+cron:
+  schedule: "0 3 * * *"
+
+gateway:
   enabled: true
-  schedule: "0 */6 * * *"   # every 6 hours
+  name: public-gateway
+  namespace: default
+  hostname: rates.example.com
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-autoscaling:
+monitoring:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
+  serviceMonitor:
+    enabled: true
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
 
-env: []
-  # - name: LOG_LEVEL
-  #   value: "INFO"
-
-envFromSecrets: []
-  # - name: my-secret
-
-envFromConfigMaps: []
-  # - name: my-configmap
-
-livenessProbe:
-  enabled: true
-  path: /health
-  initialDelaySeconds: 15
-  periodSeconds: 20
-  timeoutSeconds: 2
-  failureThreshold: 3
-  successThreshold: 1
-
-readinessProbe:
-  enabled: true
-  path: /health
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 2
-  failureThreshold: 3
-  successThreshold: 1
-
-startupProbe:
+hpa:
   enabled: false
-  path: /health
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 2
-  failureThreshold: 30
-  successThreshold: 1
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: null
 
-nodeSelector: {}
-tolerations: []
-affinity: {}
+imagePullSecrets: []

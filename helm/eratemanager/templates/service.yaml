@@ -3,17 +3,13 @@ kind: Service
 metadata:
   name: {{ include "eratemanager.fullname" . }}
   labels:
-    {{- include "eratemanager.labels" . | nindent 4 }}
-  {{- with .Values.service.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    app: {{ include "eratemanager.name" . }}
 spec:
   type: {{ .Values.service.type }}
-  ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.targetPort }}
-      protocol: TCP
-      name: http
   selector:
-    {{- include "eratemanager.selectorLabels" . | nindent 4 }}
+    app: {{ include "eratemanager.name" . }}
+  ports:
+    - protocol: TCP
+      name: http
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.app.port }}

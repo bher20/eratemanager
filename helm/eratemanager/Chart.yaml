@@ -1,6 +1,6 @@
 apiVersion: v2
 name: eratemanager
-description: Helm chart for the CEMC rate parser FastAPI service
+description: Helm chart for eRateManager Go backend
 type: application
-version: 0.3.0
+version: 0.4.0
 appVersion: "0.1.0"

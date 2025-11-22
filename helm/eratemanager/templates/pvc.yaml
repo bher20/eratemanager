@@ -1,16 +1,12 @@
-{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+{{- if .Values.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "eratemanager.fullname" . }}-pvc
-  labels:
-    {{- include "eratemanager.labels" . | nindent 4 }}
+  name: {{ include "eratemanager.fullname" . }}-data
 spec:
-  accessModes: {{ toYaml .Values.persistence.accessModes | nindent 2 }}
+  accessModes:
+    - ReadWriteOnce
   resources:
     requests:
       storage: {{ .Values.persistence.size }}
-  {{- if .Values.persistence.storageClassName }}
-  storageClassName: {{ .Values.persistence.storageClassName }}
-  {{- end }}
 {{- end }}
