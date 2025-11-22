@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Provider",
+        "description": "Choose your energy provider"
+      },
+      "url": {
+        "title": "API Endpoint URL",
+        "description": "Confirm or change the server API URL used to fetch energy rates."
+      }
+    }
+  }
+}

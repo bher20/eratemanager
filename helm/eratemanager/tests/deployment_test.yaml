@@ -1,0 +1,11 @@
+suite: Deployment tests
+templates:
+  - templates/deployment.yaml
+tests:
+  - it: should render a Deployment with correct name
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: eratemanager
