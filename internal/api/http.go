@@ -13,13 +13,34 @@ import (
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/ui"
+	migrate "github.com/bher20/eratemanager/internal/migrate"
+	"context"
+	"github.com/bher20/eratemanager/internal/storage"
 )
+
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
 func NewMux() *http.ServeMux {
 	cfg := rates.Config{
 		CEMCPDFPath: os.Getenv("CEMC_PDF_PATH"),
 		NESPDFPath:  os.Getenv("NES_PDF_PATH"),
+	}
+
+	// Optional auto-migration: run `goose up` on startup when enabled.
+	autoMig := os.Getenv("ERATEMANAGER_AUTO_MIGRATE")
+	driver := os.Getenv("ERATEMANAGER_DB_DRIVER")
+	dsn := os.Getenv("ERATEMANAGER_DB_DSN")
+	if autoMig == "1" || strings.ToLower(autoMig) == "true" || strings.ToLower(autoMig) == "yes" {
+		ctx := context.Background()
+		if driver == "" {
+			driver = "sqlite"
+		}
+		if dsn == "" {
+			dsn = "eratemanager.db"
+		}
+		if err := migrate.Up(ctx, driver, dsn); err != nil {
+			log.Printf("auto-migration failed: %v", err)
+		}
 	}
 
 	// Fallback to provider defaults if env vars are not set.
@@ -34,7 +55,17 @@ func NewMux() *http.ServeMux {
 		}
 	}
 
-	svc := rates.NewService(cfg)
+	// Construct the rates service, preferring a real storage backend when available.
+	var svc *rates.Service
+	ctxSvc := context.Background()
+	st, err := storage.Open(ctxSvc, storage.Config{Driver: driver, DSN: dsn})
+	if err != nil {
+		log.Printf("storage.Open failed (driver=%s dsn=%s): %v; falling back to PDF-only mode", driver, dsn, err)
+		svc = rates.NewService(cfg)
+	} else {
+		log.Printf("rates service using storage backend driver=%s", driver)
+		svc = rates.NewServiceWithStorage(cfg, st)
+	}
 
 	mux := http.NewServeMux()
 
@@ -47,6 +78,27 @@ func NewMux() *http.ServeMux {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		drv := os.Getenv("ERATEMANAGER_DB_DRIVER")
+		dsn := os.Getenv("ERATEMANAGER_DB_DSN")
+		if drv == "" {
+			drv = "sqlite"
+		}
+		if dsn == "" {
+			dsn = "eratemanager.db"
+		}
+		st, err := storage.Open(ctx, storage.Config{Driver: drv, DSN: dsn})
+		if err != nil {
+			log.Printf("readyz: storage open failed: %v", err)
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		defer st.Close()
+		if err := st.Ping(ctx); err != nil {
+			log.Printf("readyz: db ping failed: %v", err)
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ready"))
 	})

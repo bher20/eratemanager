@@ -1,0 +1,25 @@
+
+{{- if .Values.batch.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "eratemanager.fullname" . }}-batch
+spec:
+  schedule: "{{ .Values.batch.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: batch
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              command: ["eratemanager", "batch"]
+              env:
+                - name: ERATEMANAGER_DB_DRIVER
+                  value: {{ .Values.db.driver | quote }}
+                - name: ERATEMANAGER_DB_DSN
+                  value: {{ .Values.db.dsn | quote }}
+                - name: BATCH_INTERVAL_SECONDS
+                  value: "{{ .Values.batch.intervalSeconds }}"
+{{- end }}

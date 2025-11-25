@@ -25,6 +25,11 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.app.port }}"
+            - name: ERATEMANAGER_DB_DRIVER
+              value: {{ .Values.db.driver | quote }}
+            - name: ERATEMANAGER_DB_DSN
+              value: {{ .Values.db.dsn | quote }}
+
           ports:
             - containerPort: {{ .Values.app.port }}
           volumeMounts:
