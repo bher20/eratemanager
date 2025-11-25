@@ -1,0 +1,21 @@
+
+{{- if and .Values.cronWorker.enabled .Values.cronWorker.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "eratemanager.fullname" . }}-cron
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "eratemanager.fullname" . }}-cron
+  minReplicas: {{ .Values.cronWorker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.cronWorker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.cronWorker.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
