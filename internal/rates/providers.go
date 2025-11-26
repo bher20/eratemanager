@@ -32,6 +32,13 @@ func defaultProviders() []ProviderDescriptor {
 			DefaultPDFPath: "/data/nes_rates.pdf",
 			Notes:          "NES residential rates",
 		},
+		{
+			Key:            "kub",
+			Name:           "Knoxville Utilities Board",
+			LandingURL:     "https://www.kub.org/bills-payments/understand-your-bill/residential-rates/",
+			DefaultPDFPath: "/data/kub_rates.pdf",
+			Notes:          "KUB residential rates (TVA distributor)",
+		},
 	})
 }
 

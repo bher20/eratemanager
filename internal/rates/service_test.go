@@ -34,10 +34,10 @@ TVA Fuel Charge: 0.02 per kWh
 
 // TestParserRegistry ensures parsers are registered via init().
 func TestParserRegistry(t *testing.T) {
-	// CEMC and NES should be registered
+	// CEMC, NES, and KUB should be registered
 	keys := ListParsers()
-	if len(keys) < 2 {
-		t.Errorf("expected at least 2 parsers registered, got %d", len(keys))
+	if len(keys) < 3 {
+		t.Errorf("expected at least 3 parsers registered, got %d: %v", len(keys), keys)
 	}
 
 	cemc, ok := GetParser("cemc")
@@ -57,6 +57,17 @@ func TestParserRegistry(t *testing.T) {
 	}
 	if nes.Name == "" {
 		t.Error("nes parser has empty name")
+	}
+
+	kub, ok := GetParser("kub")
+	if !ok {
+		t.Fatalf("kub parser not registered")
+	}
+	if kub.Name == "" {
+		t.Error("kub parser has empty name")
+	}
+	if kub.ParsePDF == nil {
+		t.Error("kub parser has nil ParsePDF")
 	}
 }
 
