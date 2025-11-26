@@ -104,6 +104,35 @@ func scorePDFCandidate(href, text string) int {
 
     score := 0
 
+    // Penalize non-electric PDFs heavily
+    if strings.Contains(hrefLower, "water") || strings.Contains(textLower, "water") {
+        score -= 20
+    }
+    if strings.Contains(hrefLower, "wastewater") || strings.Contains(textLower, "wastewater") {
+        score -= 20
+    }
+    if strings.Contains(hrefLower, "gas") || strings.Contains(textLower, "gas") {
+        score -= 10
+    }
+
+    // Penalize time-of-use schedules (we want standard residential)
+    if strings.Contains(hrefLower, "tou") || strings.Contains(textLower, "tou") ||
+       strings.Contains(hrefLower, "time-of-use") || strings.Contains(textLower, "time-of-use") {
+        score -= 5
+    }
+
+    // Favor electric-specific patterns
+    if strings.Contains(hrefLower, "electric") || strings.Contains(textLower, "electric") {
+        score += 10
+    }
+    // RS = Residential Schedule (common electric rate naming) - but not RS-TOU
+    // Pattern: RS_ or /RS_ at start, or filename starts with RS followed by underscore and digits
+    if regexp.MustCompile(`(?i)[/_]rs[_][0-9]`).MatchString(hrefLower) {
+        score += 12
+    } else if regexp.MustCompile(`(?i)[/_]rs[0-9]`).MatchString(hrefLower) {
+        score += 8
+    }
+
     if strings.Contains(textLower, "residential") {
         score += 5
     }
@@ -113,7 +142,7 @@ func scorePDFCandidate(href, text string) int {
     if strings.Contains(hrefLower, "residential") {
         score += 3
     }
-    if strings.Contains(hrefLower, "rates") || strings.Contains(hrefLower, "rs") {
+    if strings.Contains(hrefLower, "rates") {
         score += 2
     }
     if strings.Contains(textLower, "current") || strings.Contains(hrefLower, "2025") {
