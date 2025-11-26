@@ -133,7 +133,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/rates/", handleRates(svc))
 
 	// Internal refresh endpoint for CronJobs / manual refresh.
-	RegisterRefreshHandler(mux)
+	RegisterRefreshHandler(mux, st)
 	RegisterProvidersHandler(mux)
 
 	// Web UI
