@@ -87,9 +87,20 @@ var cronCmd = &cobra.Command{
     },
 }
 
+var batchCmd = &cobra.Command{
+    Use:   "batch",
+    Short: "Run a one-shot batch refresh of all provider rates (for CronJobs)",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        ctx := context.Background()
+        driver, dsn := getDBEnv()
+        log.Printf("starting batch refresh with driver=%s dsn=%s", driver, dsn)
+        return cron.RunBatchOnce(ctx, driver, dsn)
+    },
+}
+
 func init() {
     migrateCmd.AddCommand(migrateUpCmd, migrateDownCmd, migrateStatusCmd)
-    rootCmd.AddCommand(serveCmd, migrateCmd, cronCmd)
+    rootCmd.AddCommand(serveCmd, migrateCmd, cronCmd, batchCmd)
 }
 
 func serve() error {

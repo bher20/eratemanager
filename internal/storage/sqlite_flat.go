@@ -30,6 +30,8 @@ func OpenSQLite(dsn string) (*SQLiteStorage, error) {
 
 func (s *SQLiteStorage) Close() error { return s.db.Close() }
 
+func (s *SQLiteStorage) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
 // Migrate runs basic schema migrations for providers and rate snapshots.
 func (s *SQLiteStorage) Migrate(ctx context.Context) error {
 	stmts := []string{
@@ -46,6 +48,17 @@ func (s *SQLiteStorage) Migrate(ctx context.Context) error {
 			payload BLOB NOT NULL,
 			fetched_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS batch_progress (
+			batch_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			status TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			error_message TEXT,
+			retry_count INTEGER DEFAULT 0,
+			PRIMARY KEY (batch_id, provider)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -136,4 +149,74 @@ func (s *SQLiteStorage) SaveRatesSnapshot(ctx context.Context, snap RatesSnapsho
 		VALUES (?, ?, ?)
 	`, snap.Provider, snap.Payload, snap.FetchedAt.Format(time.RFC3339Nano))
 	return err
+}
+
+func (s *SQLiteStorage) SaveBatchProgress(ctx context.Context, progress BatchProgress) error {
+	var startedAt, completedAt sql.NullString
+	if !progress.StartedAt.IsZero() {
+		startedAt = sql.NullString{String: progress.StartedAt.Format(time.RFC3339Nano), Valid: true}
+	}
+	if !progress.CompletedAt.IsZero() {
+		completedAt = sql.NullString{String: progress.CompletedAt.Format(time.RFC3339Nano), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO batch_progress (batch_id, provider, status, started_at, completed_at, error_message, retry_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(batch_id, provider) DO UPDATE SET
+			status = excluded.status,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			error_message = excluded.error_message,
+			retry_count = excluded.retry_count
+	`, progress.BatchID, progress.Provider, progress.Status, startedAt, completedAt, progress.ErrorMessage, progress.RetryCount)
+	return err
+}
+
+func (s *SQLiteStorage) GetBatchProgress(ctx context.Context, batchID, provider string) (*BatchProgress, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT batch_id, provider, status, started_at, completed_at, error_message, retry_count
+		FROM batch_progress
+		WHERE batch_id = ? AND provider = ?
+	`, batchID, provider)
+
+	var bp BatchProgress
+	var startedAt, completedAt sql.NullString
+	if err := row.Scan(&bp.BatchID, &bp.Provider, &bp.Status, &startedAt, &completedAt, &bp.ErrorMessage, &bp.RetryCount); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if startedAt.Valid {
+		bp.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt.String)
+	}
+	if completedAt.Valid {
+		bp.CompletedAt, _ = time.Parse(time.RFC3339Nano, completedAt.String)
+	}
+
+	return &bp, nil
+}
+
+func (s *SQLiteStorage) GetPendingBatchProviders(ctx context.Context, batchID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider FROM batch_progress
+		WHERE batch_id = ? AND status IN ('pending', 'failed')
+		ORDER BY provider
+	`, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var providers []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
 }
