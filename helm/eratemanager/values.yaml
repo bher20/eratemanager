@@ -42,9 +42,12 @@ service:
 app:
   port: 8000
 
-providers:
-  - key: cemc
-  - key: nes
+# Providers are now discovered dynamically via the /providers API endpoint.
+# No need to list them here - the helm chart will query the running application.
+
+# Refresh hook runs after install/upgrade to populate data for all discovered providers
+refreshHook:
+  enabled: true
 
 persistence:
   enabled: true
@@ -52,6 +55,7 @@ persistence:
   mountPath: /data
 
 cron:
+  enabled: true
   schedule: "0 3 * * *"
 
 gateway:
