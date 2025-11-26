@@ -22,10 +22,18 @@ import (
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
 func NewMux() *http.ServeMux {
-	cfg := rates.Config{
-		CEMCPDFPath: os.Getenv("CEMC_PDF_PATH"),
-		NESPDFPath:  os.Getenv("NES_PDF_PATH"),
+	// Build PDF paths map from environment variables and provider defaults
+	pdfPaths := make(map[string]string)
+	for _, p := range rates.Providers() {
+		// Check for env var override first (e.g., CEMC_PDF_PATH, NES_PDF_PATH)
+		envKey := strings.ToUpper(p.Key) + "_PDF_PATH"
+		if path := os.Getenv(envKey); path != "" {
+			pdfPaths[p.Key] = path
+		} else if p.DefaultPDFPath != "" {
+			pdfPaths[p.Key] = p.DefaultPDFPath
+		}
 	}
+	cfg := rates.Config{PDFPaths: pdfPaths}
 
 	// Optional auto-migration: run `goose up` on startup when enabled.
 	autoMig := os.Getenv("ERATEMANAGER_AUTO_MIGRATE")
@@ -41,18 +49,6 @@ func NewMux() *http.ServeMux {
 		}
 		if err := migrate.Up(ctx, driver, dsn); err != nil {
 			log.Printf("auto-migration failed: %v", err)
-		}
-	}
-
-	// Fallback to provider defaults if env vars are not set.
-	if cfg.CEMCPDFPath == "" {
-		if p, ok := rates.GetProvider("cemc"); ok && p.DefaultPDFPath != "" {
-			cfg.CEMCPDFPath = p.DefaultPDFPath
-		}
-	}
-	if cfg.NESPDFPath == "" {
-		if p, ok := rates.GetProvider("nes"); ok && p.DefaultPDFPath != "" {
-			cfg.NESPDFPath = p.DefaultPDFPath
 		}
 	}
 

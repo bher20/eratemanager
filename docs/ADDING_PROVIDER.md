@@ -1,77 +1,127 @@
 # Adding a New Utility Provider to eRateManager (Go)
 
-This project supports multiple utilities (CEMC, NES, Demo) and provides
-scaffolding to add more.
+This project uses a **parser registry pattern** that makes adding new providers
+simple. Parsers auto-register themselves via Go's `init()` mechanism.
 
-There are three main layers to touch:
+## Quick Start: 2 Steps
 
-1. Go backend (parsing + service)
-2. Helm chart (cronjob + storage)
-3. Home Assistant integration (provider list + default URL)
-
-## 1. Backend: use the scaffold script
-
-From the repo root, run:
+### Step 1: Run the scaffold script
 
 ```bash
-python tools/scaffold_provider.py       --key myutility       --name "My Utility Power"       --landing-url "https://myutility.example.com/rates/"       --pdf-path "/data/myutility_rates.pdf"
+python tools/scaffold_provider.py \
+    --key myutility \
+    --name "My Utility Power" \
+    --landing-url "https://myutility.example.com/rates/" \
+    --pdf-path "/data/myutility_rates.pdf"
 ```
 
-This will:
+This generates:
+- `internal/rates/parser_myutility_pdf.go` - Parser with auto-registration
+- `internal/rates/parser_myutility_pdf_test.go` - Unit test template
 
-- Generate `internal/rates/parser_myutility_pdf.go` with a stub parser
-- Generate `internal/rates/parser_myutility_pdf_test.go` with a sample test
-- Print snippets you can copy into:
-  - `internal/rates/service.go` (switch case for provider)
-  - `internal/rates/providers.go` (descriptor entry)
-  - Home Assistant `const.py` (provider entry)
-  - Helm `values.yaml` (pdf URL + path)
+### Step 2: Add provider descriptor
 
-After generation:
+Add an entry to `internal/rates/providers.go`:
+
+```go
+{
+    Key:            "myutility",
+    Name:           "My Utility Power",
+    LandingURL:     "https://myutility.example.com/rates/",
+    DefaultPDFPath: "/data/myutility_rates.pdf",
+    Notes:          "My Utility residential rates.",
+},
+```
+
+**That's it!** The parser auto-registers via `init()`. No switch statements
+to update, no service.go changes needed.
+
+### Step 3 (Optional): Customize the parser
+
+Edit `internal/rates/parser_myutility_pdf.go` to match your PDF's actual format:
+
+```go
+// Customize these regex patterns to match your PDF
+custRe := regexp.MustCompile(`Customer Charge[:\s]*\$?([0-9]+(?:\.[0-9]+)?)`)
+energyRe := regexp.MustCompile(`Energy Charge[:\s]*([0-9]+(?:\.[0-9]+)?)\s*cents?\s*per kWh`)
+```
+
+Then verify:
 
 ```bash
-gofmt -w internal/rates/parser_myutility_pdf.go internal/rates/parser_myutility_pdf_test.go
+gofmt -w internal/rates/parser_myutility_pdf.go
 go test ./...
 ```
 
-Then implement real regexes in `ParseMyUtilityRatesFromText`.
+## How It Works
 
-## 2. Helm chart
+Each parser file contains an `init()` function that registers itself:
 
-- Add a `pdf.<key>.url` entry under `helm/eratemanager/values.yaml`.
-- Optionally add a dedicated CronJob template following the existing
-  CEMC/NES pattern:
-  `helm/eratemanager/templates/cronjob_<key>.yaml`.
+```go
+func init() {
+    RegisterParser(ParserConfig{
+        Key:       "myutility",
+        Name:      "My Utility Power",
+        ParsePDF:  ParseMyutilityRatesFromPDF,
+        ParseText: ParseMyutilityRatesFromText,
+    })
+}
+```
 
-## 3. Home Assistant integration
+The service layer uses the registry to find parsers dynamically:
 
-In `ha_energy_rates` (separate repo/integration):
+```go
+// No switch statements needed - just registry lookup
+parser, ok := GetParser(providerKey)
+if !ok {
+    return nil, fmt.Errorf("unknown provider: %s", providerKey)
+}
+return parser.ParsePDF(pdfPath)
+```
 
-- Add a provider entry to `PROVIDERS` in `const.py`:
+## Optional Integrations
 
-  ```python
-  "myutility": {
-      "name": "My Utility Power",
-      "default_url": "https://<your-hostname>/rates/myutility/residential",
-  },
-  ```
+### Helm Chart
 
-After that, the HA config flow will automatically expose your provider
-in the dropdown, and the existing sensors will work as long as your
-backend JSON matches the shared schema.
+Add PDF configuration to `helm/eratemanager/values.yaml`:
 
-## 4. Testing
+```yaml
+pdf:
+  myutility:
+    url: "https://myutility.example.com/path/to/rates.pdf"
+    path: "/data/myutility_rates.pdf"
+```
 
-- Run backend tests:
+### Home Assistant Integration
 
-  ```bash
-  go test ./...
-  ```
+Add to `ha_energy_rates` integration's `const.py`:
 
-- Hit the new endpoint once deployed:
+```python
+"myutility": {
+    "name": "My Utility Power",
+    "default_url": "https://<your-hostname>/rates/myutility/residential",
+},
+```
 
-  ```bash
-  curl https://<your-hostname>/rates/myutility/residential
-  ```
+## Testing
 
-- Add the provider in Home Assistant via the "HA Energy Rates" integration.
+```bash
+# Run all tests
+go test ./...
+
+# Test the endpoint
+curl https://<your-hostname>/rates/myutility/residential
+```
+
+## Architecture Overview
+
+```
+internal/rates/
+├── registry.go          # Parser registration system
+├── providers.go         # Provider metadata (name, URLs, paths)
+├── service.go           # Rate fetching service (uses registry)
+├── model.go             # RatesResponse data structures
+├── parser_cemc_pdf.go   # CEMC parser (auto-registers)
+├── parser_nes_pdf.go    # NES parser (auto-registers)
+└── parser_*.go          # Your new parsers (auto-register)
+```

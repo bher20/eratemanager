@@ -10,6 +10,15 @@ import (
 	pdf "github.com/ledongthuc/pdf"
 )
 
+func init() {
+	RegisterParser(ParserConfig{
+		Key:       "nes",
+		Name:      "Nashville Electric Service",
+		ParsePDF:  ParseNESRatesFromPDF,
+		ParseText: ParseNESRatesFromText,
+	})
+}
+
 // ParseNESRatesFromPDF opens a NES rates PDF at the given path, extracts
 // text, and delegates to ParseNESRatesFromText.
 func ParseNESRatesFromPDF(path string) (*RatesResponse, error) {

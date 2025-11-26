@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,22 @@ import (
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
 )
+
+// buildRatesConfig creates a rates.Config with PDF paths from environment
+// variables and provider defaults.
+func buildRatesConfig() rates.Config {
+	pdfPaths := make(map[string]string)
+	for _, p := range rates.Providers() {
+		// Check for env var override first (e.g., CEMC_PDF_PATH, NES_PDF_PATH)
+		envKey := strings.ToUpper(p.Key) + "_PDF_PATH"
+		if path := os.Getenv(envKey); path != "" {
+			pdfPaths[p.Key] = path
+		} else if p.DefaultPDFPath != "" {
+			pdfPaths[p.Key] = p.DefaultPDFPath
+		}
+	}
+	return rates.Config{PDFPaths: pdfPaths}
+}
 
 // BatchConfig controls batch processing behavior.
 type BatchConfig struct {
@@ -125,10 +142,7 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 	}
 
 	// Build rate fetching service
-	svc := rates.NewServiceWithStorage(rates.Config{
-		CEMCPDFPath: os.Getenv("CEMC_PDF_PATH"),
-		NESPDFPath:  os.Getenv("NES_PDF_PATH"),
-	}, st)
+	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
 	providers := rates.Providers()
 	jobName := "batch_refresh"
@@ -415,10 +429,7 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 	}
 
 	// Build rate fetching service
-	svc := rates.NewServiceWithStorage(rates.Config{
-		CEMCPDFPath: os.Getenv("CEMC_PDF_PATH"),
-		NESPDFPath:  os.Getenv("NES_PDF_PATH"),
-	}, st)
+	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
 	// Configurable interval
 	intervalSec := 3600
@@ -502,10 +513,7 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 // ForceRefreshProvider bypasses the cache and forces a fresh PDF parse for a provider.
 // This is useful for manual refreshes triggered by the UI.
 func ForceRefreshProvider(ctx context.Context, st storage.Storage, provider string) (*rates.RatesResponse, error) {
-	svc := rates.NewServiceWithStorage(rates.Config{
-		CEMCPDFPath: os.Getenv("CEMC_PDF_PATH"),
-		NESPDFPath:  os.Getenv("NES_PDF_PATH"),
-	}, st)
+	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
 	// Force refresh by calling the internal method that always parses the PDF
 	resp, err := svc.ForceRefresh(ctx, provider)

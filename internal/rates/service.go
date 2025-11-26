@@ -11,11 +11,12 @@ import (
 )
 
 // Config controls how the rates service behaves.
+// Provider-specific PDF paths can be set via environment variables or
+// the provider descriptor's DefaultPDFPath.
 type Config struct {
-	// CEMCPDFPath is an optional filesystem path to a cached CEMC rates PDF.
-	CEMCPDFPath string
-	// NESPDFPath is an optional filesystem path to a cached NES rates PDF.
-	NESPDFPath string
+	// PDFPaths allows overriding PDF paths per provider key.
+	// If empty, uses the provider's DefaultPDFPath from the registry.
+	PDFPaths map[string]string
 }
 
 // Service coordinates fetching and caching of rates.
@@ -39,14 +40,17 @@ func NewServiceWithStorage(cfg Config, st storage.Storage) *Service {
 // It consults persistent storage first; on cache miss it parses PDFs and
 // writes a new snapshot.
 func (s *Service) GetResidential(ctx context.Context, provider string) (*RatesResponse, error) {
-	switch provider {
-	case "cemc":
-		return s.getProviderRates(ctx, "cemc", s.getCEMCRatesFromPDF)
-	case "nes":
-		return s.getProviderRates(ctx, "nes", s.getNESRatesFromPDF)
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", provider)
+	// Use the registry to find the parser
+	parser, ok := GetParser(provider)
+	if !ok {
+		return nil, fmt.Errorf("unknown provider: %s (no parser registered)", provider)
 	}
+
+	loader := func() (*RatesResponse, error) {
+		return s.parseProviderPDF(provider, parser)
+	}
+
+	return s.getProviderRates(ctx, provider, loader)
 }
 
 // getProviderRates is a small helper that tries storage first, then falls back
@@ -94,60 +98,47 @@ func (s *Service) getProviderRates(
 	return resp, nil
 }
 
-// getCEMCRatesFromPDF maintains the existing PDF-loading behavior for CEMC.
-func (s *Service) getCEMCRatesFromPDF() (*RatesResponse, error) {
-	path := s.cfg.CEMCPDFPath
-	if path == "" {
-		if p, ok := GetProvider("cemc"); ok && p.DefaultPDFPath != "" {
-			path = p.DefaultPDFPath
-		}
+// parseProviderPDF is a generic PDF loader that uses the registry.
+func (s *Service) parseProviderPDF(providerKey string, parser ParserConfig) (*RatesResponse, error) {
+	// Check for override in config
+	path := ""
+	if s.cfg.PDFPaths != nil {
+		path = s.cfg.PDFPaths[providerKey]
 	}
-	if path == "" {
-		return nil, fmt.Errorf("no PDF path configured for CEMC")
-	}
-	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("CEMC PDF not found at %s: %w", path, err)
-	}
-	return ParseCEMCRatesFromPDF(path)
-}
 
-// getNESRatesFromPDF maintains the existing PDF-loading behavior for NES.
-func (s *Service) getNESRatesFromPDF() (*RatesResponse, error) {
-	path := s.cfg.NESPDFPath
+	// Fall back to provider descriptor
 	if path == "" {
-		if p, ok := GetProvider("nes"); ok && p.DefaultPDFPath != "" {
+		if p, ok := GetProvider(providerKey); ok && p.DefaultPDFPath != "" {
 			path = p.DefaultPDFPath
 		}
 	}
+
 	if path == "" {
-		return nil, fmt.Errorf("no PDF path configured for NES")
+		return nil, fmt.Errorf("no PDF path configured for %s", providerKey)
 	}
+
 	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("NES PDF not found at %s: %w", path, err)
+		return nil, fmt.Errorf("%s PDF not found at %s: %w", providerKey, path, err)
 	}
-	return ParseNESRatesFromPDF(path)
+
+	return parser.ParsePDF(path)
 }
 
 // ForceRefresh bypasses the cache and forces a fresh PDF parse for a provider.
-// The result is NOT automatically saved to storage - caller should handle that.
+// The result is saved to storage.
 func (s *Service) ForceRefresh(ctx context.Context, provider string) (*RatesResponse, error) {
-	var loader func() (*RatesResponse, error)
-
-	switch provider {
-	case "cemc":
-		loader = s.getCEMCRatesFromPDF
-	case "nes":
-		loader = s.getNESRatesFromPDF
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", provider)
+	// Use the registry to find the parser
+	parser, ok := GetParser(provider)
+	if !ok {
+		return nil, fmt.Errorf("unknown provider: %s (no parser registered)", provider)
 	}
 
-	resp, err := loader()
+	resp, err := s.parseProviderPDF(provider, parser)
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return nil, fmt.Errorf("nil response from loader for provider %s", provider)
+		return nil, fmt.Errorf("nil response from parser for provider %s", provider)
 	}
 	if resp.FetchedAt.IsZero() {
 		resp.FetchedAt = time.Now()
