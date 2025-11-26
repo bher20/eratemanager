@@ -14,11 +14,11 @@ import (
 )
 
 type RefreshResponse struct {
-	Provider string             `json:"provider"`
-	PDFURL   string             `json:"pdf_url"`
-	Path     string             `json:"path"`
-	Status   string             `json:"status"`
-	Error    string             `json:"error,omitempty"`
+	Provider string               `json:"provider"`
+	PDFURL   string               `json:"pdf_url"`
+	Path     string               `json:"path"`
+	Status   string               `json:"status"`
+	Error    string               `json:"error,omitempty"`
 	Rates    *rates.RatesResponse `json:"rates,omitempty"`
 }
 
@@ -70,7 +70,7 @@ func RegisterRefreshHandler(mux *http.ServeMux, st storage.Storage) {
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			resp.Status = "ok"
-			
+
 			// Step 2: Force re-parse the PDF and save to database
 			svc := rates.NewServiceWithStorage(rates.Config{}, st)
 			ctx := context.Background()
