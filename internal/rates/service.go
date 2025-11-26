@@ -127,3 +127,42 @@ func (s *Service) getNESRatesFromPDF() (*RatesResponse, error) {
     }
     return ParseNESRatesFromPDF(path)
 }
+
+// ForceRefresh bypasses the cache and forces a fresh PDF parse for a provider.
+// The result is NOT automatically saved to storage - caller should handle that.
+func (s *Service) ForceRefresh(ctx context.Context, provider string) (*RatesResponse, error) {
+    var loader func() (*RatesResponse, error)
+
+    switch provider {
+    case "cemc":
+        loader = s.getCEMCRatesFromPDF
+    case "nes":
+        loader = s.getNESRatesFromPDF
+    default:
+        return nil, fmt.Errorf("unknown provider: %s", provider)
+    }
+
+    resp, err := loader()
+    if err != nil {
+        return nil, err
+    }
+    if resp == nil {
+        return nil, fmt.Errorf("nil response from loader for provider %s", provider)
+    }
+    if resp.FetchedAt.IsZero() {
+        resp.FetchedAt = time.Now()
+    }
+
+    // Write-back to storage (best-effort)
+    if s.store != nil {
+        if payload, err := json.Marshal(resp); err == nil {
+            _ = s.store.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
+                Provider:  provider,
+                Payload:   payload,
+                FetchedAt: resp.FetchedAt,
+            })
+        }
+    }
+
+    return resp, nil
+}

@@ -5,10 +5,22 @@ image:
 
 replicaCount: 1
 
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: password
+    database: eratemanager
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+    tag: latest
+
 db:
-  # Default sqlite settings; override to use Postgres.
-  driver: "sqlite"
-  dsn: "eratemanager.db"
+  # Use Postgres (postgrespool for connection pooling)
+  driver: "postgrespool"
+  dsn: "postgres://postgres:password@eratemanager-postgresql:5432/eratemanager?sslmode=disable"
 
 cronWorker:
   enabled: false
@@ -64,7 +76,8 @@ hpa:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: null
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: ghcr-pull-secret
 
 batch:
   enabled: true

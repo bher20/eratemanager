@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,14 +11,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/bher20/eratemanager/internal/metrics"
-	"github.com/bher20/eratemanager/internal/rates"
-	"github.com/bher20/eratemanager/internal/ui"
-	migrate "github.com/bher20/eratemanager/internal/migrate"
 	"context"
-	"github.com/bher20/eratemanager/internal/storage"
-)
 
+	"github.com/bher20/eratemanager/internal/metrics"
+	migrate "github.com/bher20/eratemanager/internal/migrate"
+	"github.com/bher20/eratemanager/internal/rates"
+	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/internal/ui"
+)
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
 func NewMux() *http.ServeMux {
@@ -58,7 +59,28 @@ func NewMux() *http.ServeMux {
 	// Construct the rates service, preferring a real storage backend when available.
 	var svc *rates.Service
 	ctxSvc := context.Background()
-	st, err := storage.Open(ctxSvc, storage.Config{Driver: driver, DSN: dsn})
+	// When using the in-memory storage, preload provider descriptors so the
+	// UI and cron workers know which providers exist without calling into
+	// storage (avoids import cycles).
+	var st storage.Storage
+	var err error
+	if driver == "memory" {
+		// Convert rates.ProviderDescriptor -> storage.Provider
+		var pList []storage.Provider
+		for _, pd := range rates.Providers() {
+			pList = append(pList, storage.Provider{
+				Key:            pd.Key,
+				Name:           pd.Name,
+				LandingURL:     pd.LandingURL,
+				DefaultPDFPath: pd.DefaultPDFPath,
+				Notes:          pd.Notes,
+			})
+		}
+		st = storage.NewMemoryWithProviders(pList)
+		err = nil
+	} else {
+		st, err = storage.Open(ctxSvc, storage.Config{Driver: driver, DSN: dsn})
+	}
 	if err != nil {
 		log.Printf("storage.Open failed (driver=%s dsn=%s): %v; falling back to PDF-only mode", driver, dsn, err)
 		svc = rates.NewService(cfg)
@@ -127,21 +149,59 @@ func NewMux() *http.ServeMux {
 	return mux
 }
 
-// handleRates returns a handler that serves /rates/{provider}/residential using the rates.Service.
+// handleRates returns a handler that serves /rates/{provider}/residential and /rates/{provider}/pdf using the rates.Service.
 func handleRates(svc *rates.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Expected path: /rates/{provider}/residential
+		// Expected paths: /rates/{provider}/residential or /rates/{provider}/pdf
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
-		if len(parts) != 3 || parts[0] != "rates" || parts[2] != "residential" {
+		if len(parts) != 3 || parts[0] != "rates" {
 			metrics.RequestErrorsTotal.WithLabelValues("unknown", r.URL.Path, "404").Inc()
 			http.NotFound(w, r)
 			return
 		}
 
 		providerKey := strings.ToLower(parts[1])
+		endpoint := parts[2]
+
+		// Handle PDF download
+		if endpoint == "pdf" {
+			labelsPath := "/rates/pdf"
+			defer func() {
+				dur := time.Since(start).Seconds()
+				metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
+			}()
+			metrics.RequestsTotal.WithLabelValues(providerKey).Inc()
+
+			p, ok := rates.GetProvider(providerKey)
+			if !ok {
+				metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
+				http.NotFound(w, r)
+				return
+			}
+
+			pdfPath := p.DefaultPDFPath
+			if pdfPath == "" {
+				metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
+				http.Error(w, "no PDF configured for this provider", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s_rates.pdf", providerKey))
+			http.ServeFile(w, r, pdfPath)
+			return
+		}
+
+		// Handle residential rates
+		if endpoint != "residential" {
+			metrics.RequestErrorsTotal.WithLabelValues("unknown", r.URL.Path, "404").Inc()
+			http.NotFound(w, r)
+			return
+		}
+
 		labelsProvider := providerKey
 		labelsPath := "/rates/residential"
 
