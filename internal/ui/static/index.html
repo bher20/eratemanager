@@ -148,12 +148,12 @@
     .grid {
       display: grid;
       gap: 1.4rem;
-      grid-template-columns: minmax(280px, 320px) minmax(0, 1.6fr) minmax(0, 1.1fr);
+      grid-template-columns: minmax(300px, 400px) minmax(0, 1.6fr) minmax(0, 1.1fr);
     }
 
     @media (max-width: 1200px) {
       .grid {
-        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
         grid-template-rows: auto auto;
         grid-auto-flow: row;
       }
@@ -178,17 +178,6 @@
       padding: 1rem 1.1rem;
       box-shadow: var(--shadow-soft);
       position: relative;
-      overflow: hidden;
-    }
-
-    .panel::before {
-      content: "";
-      position: absolute;
-      inset: -40%;
-      background: radial-gradient(circle at top, rgba(96,165,250,0.16), transparent 60%);
-      opacity: 0.7;
-      pointer-events: none;
-      mix-blend-mode: screen;
     }
 
     .panel-inner {
@@ -235,6 +224,11 @@
       outline: none;
     }
 
+    select {
+      width: 100%;
+      text-overflow: ellipsis;
+    }
+
     [data-theme="light"] select,
     [data-theme="light"] button,
     [data-theme="light"] input[type="range"],
@@ -256,6 +250,20 @@
       gap: 0.3rem;
       font-size: 0.82rem;
       white-space: nowrap;
+    }
+
+    a.secondary {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      background: rgba(15,23,42,0.9);
+      color: inherit;
+      padding: 0.35rem 0.7rem;
     }
 
     button.primary {
@@ -521,6 +529,9 @@
               <button class="secondary" id="refreshBtn">
                 ↻ Refresh PDF
               </button>
+              <a id="downloadPdfBtn" class="secondary" style="text-decoration:none;" href="#" download>
+                ⬇ Download PDF
+              </a>
             </div>
 
             <div class="status" id="status"></div>
@@ -640,6 +651,7 @@
     const statusEl       = document.getElementById("status");
     const loadBtn        = document.getElementById("loadBtn");
     const refreshBtn     = document.getElementById("refreshBtn");
+    const downloadPdfBtn = document.getElementById("downloadPdfBtn");
     const jsonOutput     = document.getElementById("jsonOutput");
     const summaryGrid    = document.getElementById("summaryGrid");
     const summaryHeader  = document.getElementById("summaryHeader");
@@ -682,11 +694,13 @@
           opt.textContent = p.name || p.key;
           opt.dataset.landingUrl = p.landingUrl || p.landingURL || "";
           opt.dataset.defaultPdfPath = p.defaultPdfPath || p.defaultPDFPath || "";
+          opt.dataset.pdfApiUrl = p.pdfApiUrl || p.PDFAPIURL || "";
           providerSelect.appendChild(opt);
         });
 
         if (providers.length) {
           updateProviderMeta();
+          updateDownloadPdfBtn();
           providerBadge.textContent = providers[0].key.toUpperCase();
           summaryHeader.textContent = "Provider: " + providers[0].key;
         } else {
@@ -719,8 +733,20 @@
       providerMeta.innerHTML = html;
     }
 
+    function updateDownloadPdfBtn() {
+      const opt = providerSelect.selectedOptions[0];
+      const pdfUrl = opt?.dataset.pdfApiUrl;
+      if (pdfUrl) {
+        downloadPdfBtn.href = pdfUrl;
+        downloadPdfBtn.style.display = "inline-flex";
+      } else {
+        downloadPdfBtn.style.display = "none";
+      }
+    }
+
     providerSelect.addEventListener("change", () => {
       updateProviderMeta();
+      updateDownloadPdfBtn();
       const key = providerSelect.value || "—";
       providerBadge.textContent = key.toUpperCase();
       summaryHeader.textContent = "Provider: " + key;
@@ -852,7 +878,7 @@
       setStatus("Refreshing PDF for " + provider + "…");
 
       try {
-        const resp = await fetch(`/refresh/${encodeURIComponent(provider)}`, {
+        const resp = await fetch(`/internal/refresh/${encodeURIComponent(provider)}`, {
           method: "POST"
         });
         if (!resp.ok) {

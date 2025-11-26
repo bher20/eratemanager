@@ -7,6 +7,7 @@ import (
 
 type ProviderDescriptor struct {
 	Key            string `json:"key"`
+	PDFAPIURL      string `json:"pdfApiUrl"`
 	Name           string `json:"name"`
 	LandingURL     string `json:"landingUrl"`
 	DefaultPDFPath string `json:"defaultPdfPath"`
@@ -16,7 +17,7 @@ type ProviderDescriptor struct {
 const providersEnv = "ERATEMANAGER_PROVIDERS_JSON"
 
 func defaultProviders() []ProviderDescriptor {
-	return []ProviderDescriptor{
+	return withPDFURLs([]ProviderDescriptor{
 		{
 			Key:            "cemc",
 			Name:           "Cumberland Electric Membership Corporation",
@@ -31,17 +32,17 @@ func defaultProviders() []ProviderDescriptor {
 			DefaultPDFPath: "/data/nes_rates.pdf",
 			Notes:          "NES residential rates",
 		},
-	}
+	})
 }
 
 func Providers() []ProviderDescriptor {
 	raw := os.Getenv(providersEnv)
 	if raw == "" {
-		return defaultProviders()
+		return withPDFURLs(defaultProviders())
 	}
 	var out []ProviderDescriptor
 	if err := json.Unmarshal([]byte(raw), &out); err != nil || len(out) == 0 {
-		return defaultProviders()
+		return withPDFURLs(defaultProviders())
 	}
 	return out
 }
@@ -53,4 +54,13 @@ func GetProvider(key string) (ProviderDescriptor, bool) {
 		}
 	}
 	return ProviderDescriptor{}, false
+}
+
+func withPDFURLs(list []ProviderDescriptor) []ProviderDescriptor {
+	for i := range list {
+		if list[i].Key != "" {
+			list[i].PDFAPIURL = "/rates/" + list[i].Key + "/pdf"
+		}
+	}
+	return list
 }
