@@ -148,12 +148,12 @@
     .grid {
       display: grid;
       gap: 1.4rem;
-      grid-template-columns: minmax(280px, 320px) minmax(0, 1.6fr) minmax(0, 1.1fr);
+      grid-template-columns: minmax(300px, 400px) minmax(0, 1.6fr) minmax(0, 1.1fr);
     }
 
     @media (max-width: 1200px) {
       .grid {
-        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
         grid-template-rows: auto auto;
         grid-auto-flow: row;
       }
@@ -178,17 +178,6 @@
       padding: 1rem 1.1rem;
       box-shadow: var(--shadow-soft);
       position: relative;
-      overflow: hidden;
-    }
-
-    .panel::before {
-      content: "";
-      position: absolute;
-      inset: -40%;
-      background: radial-gradient(circle at top, rgba(96,165,250,0.16), transparent 60%);
-      opacity: 0.7;
-      pointer-events: none;
-      mix-blend-mode: screen;
     }
 
     .panel-inner {
@@ -225,7 +214,7 @@
       margin-bottom: 0.25rem;
     }
 
-    select, button, input[type="range"], input[type="number"] {
+    select, button, input[type="number"] {
       font: inherit;
       border-radius: 999px;
       border: 1px solid rgba(148,163,184,0.4);
@@ -235,11 +224,165 @@
       outline: none;
     }
 
+    /* Searchable dropdown styles */
+    .searchable-select {
+      position: relative;
+      width: 100%;
+    }
+
+    .searchable-select-input {
+      font: inherit;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      background: rgba(15,23,42,0.92);
+      color: inherit;
+      padding: 0.35rem 0.7rem;
+      padding-right: 2rem;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    .searchable-select-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-soft);
+    }
+
+    [data-theme="light"] .searchable-select-input {
+      background: #f9fafb;
+    }
+
+    .searchable-select-arrow {
+      position: absolute;
+      right: 0.7rem;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      opacity: 0.6;
+      font-size: 0.7rem;
+    }
+
+    .searchable-select-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: rgba(15,23,42,0.98);
+      border: 1px solid rgba(148,163,184,0.4);
+      border-radius: 0.75rem;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 100;
+      display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    [data-theme="light"] .searchable-select-dropdown {
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+
+    .searchable-select.open .searchable-select-dropdown {
+      display: block;
+    }
+
+    .searchable-select-option {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+
+    .searchable-select-option:first-child {
+      border-radius: 0.65rem 0.65rem 0 0;
+    }
+
+    .searchable-select-option:last-child {
+      border-radius: 0 0 0.65rem 0.65rem;
+    }
+
+    .searchable-select-option:hover,
+    .searchable-select-option.highlighted {
+      background: var(--accent-soft);
+    }
+
+    .searchable-select-option.selected {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .searchable-select-option.hidden {
+      display: none;
+    }
+
+    .searchable-select-empty {
+      padding: 0.75rem;
+      text-align: center;
+      opacity: 0.6;
+      font-size: 0.85rem;
+    }
+
+    input[type="range"] {
+      font: inherit;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      background: rgba(15,23,42,0.92);
+      color: inherit;
+      padding: 0;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 8px;
+      cursor: pointer;
+      box-sizing: border-box;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--fg);
+      border: 2px solid var(--accent);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--fg);
+      border: 2px solid var(--accent);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track {
+      background: linear-gradient(to right, var(--accent), var(--accent-soft));
+      border-radius: 999px;
+      height: 6px;
+    }
+
+    input[type="range"]::-moz-range-track {
+      background: linear-gradient(to right, var(--accent), var(--accent-soft));
+      border-radius: 999px;
+      height: 6px;
+    }
+
+    select {
+      width: 100%;
+      text-overflow: ellipsis;
+    }
+
     [data-theme="light"] select,
     [data-theme="light"] button,
-    [data-theme="light"] input[type="range"],
     [data-theme="light"] input[type="number"] {
       background: #f9fafb;
+    }
+
+    [data-theme="light"] input[type="range"] {
+      background: #e5e7eb;
     }
 
     select:focus,
@@ -256,6 +399,20 @@
       gap: 0.3rem;
       font-size: 0.82rem;
       white-space: nowrap;
+    }
+
+    a.secondary {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      background: rgba(15,23,42,0.9);
+      color: inherit;
+      padding: 0.35rem 0.7rem;
     }
 
     button.primary {
@@ -510,8 +667,13 @@
 
           <div class="stack">
             <div>
-              <label for="providerSelect">Utility provider</label>
-              <select id="providerSelect"></select>
+              <label for="providerSearch">Utility provider</label>
+              <div class="searchable-select" id="providerSelectWrapper">
+                <input type="text" class="searchable-select-input" id="providerSearch" placeholder="Search providers..." autocomplete="off" />
+                <span class="searchable-select-arrow">▼</span>
+                <div class="searchable-select-dropdown" id="providerDropdown"></div>
+              </div>
+              <select id="providerSelect" style="display: none;"></select>
             </div>
 
             <div class="provider-meta" id="providerMeta"></div>
@@ -521,6 +683,9 @@
               <button class="secondary" id="refreshBtn">
                 ↻ Refresh PDF
               </button>
+              <a id="downloadPdfBtn" class="secondary" style="text-decoration:none;" href="#" download>
+                ⬇ Download PDF
+              </a>
             </div>
 
             <div class="status" id="status"></div>
@@ -567,7 +732,7 @@
                 <input id="usageKwh" class="number-input" type="number" min="0" step="50" value="1000" />
                 <div class="minitext">Try 500, 1000, 1500…</div>
               </div>
-              <input id="usageSlider" type="range" min="0" max="2500" step="50" value="1000" style="width: 100%; margin-top: 0.35rem;" />
+              <input id="usageSlider" type="range" min="0" max="2500" step="50" value="1000" style="width: 100%; margin-top: 0.35rem; display: block;" />
             </div>
 
             <div class="summary-grid" id="costSummary"></div>
@@ -636,10 +801,14 @@
 
     // ---- Core UI logic ----
     const providerSelect = document.getElementById("providerSelect");
+    const providerSearch = document.getElementById("providerSearch");
+    const providerSelectWrapper = document.getElementById("providerSelectWrapper");
+    const providerDropdown = document.getElementById("providerDropdown");
     const providerMeta   = document.getElementById("providerMeta");
     const statusEl       = document.getElementById("status");
     const loadBtn        = document.getElementById("loadBtn");
     const refreshBtn     = document.getElementById("refreshBtn");
+    const downloadPdfBtn = document.getElementById("downloadPdfBtn");
     const jsonOutput     = document.getElementById("jsonOutput");
     const summaryGrid    = document.getElementById("summaryGrid");
     const summaryHeader  = document.getElementById("summaryHeader");
@@ -654,6 +823,183 @@
 
     let providers = [];
     let lastRates = null;
+    let selectedProviderKey = null;
+    let highlightedIndex = -1;
+
+    function setStatus(msg, type) {
+      statusEl.textContent = msg || "";
+      statusEl.className = "status " + (type || "");
+    }
+
+    function setLoading(isLoading) {
+      loadBtn.disabled = isLoading;
+      refreshBtn.disabled = isLoading;
+    }
+
+    // Searchable dropdown functions
+    function openDropdown() {
+      providerSelectWrapper.classList.add("open");
+      highlightedIndex = -1;
+      filterDropdownOptions();
+    }
+
+    function closeDropdown() {
+      providerSelectWrapper.classList.remove("open");
+      highlightedIndex = -1;
+      // Reset to selected provider name if nothing new was selected
+      const selected = providers.find(p => p.key === selectedProviderKey);
+      if (selected) {
+        providerSearch.value = selected.name || selected.key;
+      }
+    }
+
+    function buildDropdownOptions() {
+      providerDropdown.innerHTML = "";
+      if (providers.length === 0) {
+        providerDropdown.innerHTML = '<div class="searchable-select-empty">No providers available</div>';
+        return;
+      }
+
+      providers.forEach((p, index) => {
+        const opt = document.createElement("div");
+        opt.className = "searchable-select-option";
+        opt.dataset.key = p.key;
+        opt.dataset.index = index;
+        opt.textContent = p.name || p.key;
+        opt.addEventListener("click", (e) => {
+          e.stopPropagation();
+          selectProvider(p.key);
+          closeDropdown();
+        });
+        providerDropdown.appendChild(opt);
+      });
+    }
+
+    function filterDropdownOptions() {
+      const search = providerSearch.value.toLowerCase().trim();
+      const options = providerDropdown.querySelectorAll(".searchable-select-option");
+      let visibleCount = 0;
+      let firstVisibleIndex = -1;
+
+      options.forEach((opt, index) => {
+        const text = opt.textContent.toLowerCase();
+        const key = opt.dataset.key.toLowerCase();
+        const matches = text.includes(search) || key.includes(search);
+        opt.classList.toggle("hidden", !matches);
+        if (matches) {
+          visibleCount++;
+          if (firstVisibleIndex === -1) firstVisibleIndex = index;
+        }
+      });
+
+      // Show empty message if no results
+      let emptyMsg = providerDropdown.querySelector(".searchable-select-empty");
+      if (visibleCount === 0 && search) {
+        if (!emptyMsg) {
+          emptyMsg = document.createElement("div");
+          emptyMsg.className = "searchable-select-empty";
+          providerDropdown.appendChild(emptyMsg);
+        }
+        emptyMsg.textContent = `No providers matching "${search}"`;
+        emptyMsg.style.display = "block";
+      } else if (emptyMsg) {
+        emptyMsg.style.display = "none";
+      }
+
+      // Update highlighted index
+      updateHighlight(firstVisibleIndex);
+    }
+
+    function updateHighlight(newIndex) {
+      const options = providerDropdown.querySelectorAll(".searchable-select-option:not(.hidden)");
+      options.forEach(opt => opt.classList.remove("highlighted"));
+      
+      if (newIndex >= 0 && newIndex < options.length) {
+        highlightedIndex = newIndex;
+        options[newIndex].classList.add("highlighted");
+        options[newIndex].scrollIntoView({ block: "nearest" });
+      } else {
+        highlightedIndex = -1;
+      }
+    }
+
+    function selectProvider(key) {
+      selectedProviderKey = key;
+      const provider = providers.find(p => p.key === key);
+      if (provider) {
+        providerSearch.value = provider.name || provider.key;
+        
+        // Update hidden select for compatibility
+        providerSelect.value = key;
+        
+        // Update dropdown selection styling
+        providerDropdown.querySelectorAll(".searchable-select-option").forEach(opt => {
+          opt.classList.toggle("selected", opt.dataset.key === key);
+        });
+        
+        // Trigger change event
+        handleProviderChange();
+      }
+    }
+
+    function handleProviderChange() {
+      updateProviderMeta();
+      updateDownloadPdfBtn();
+      const key = selectedProviderKey || "—";
+      providerBadge.textContent = key.toUpperCase();
+      summaryHeader.textContent = "Provider: " + key;
+      summaryGrid.innerHTML = "";
+      jsonOutput.textContent = "Click \"Load rates\" to fetch data.";
+      lastRates = null;
+      updateCostExplorer();
+      setStatus("", "");
+    }
+
+    // Event listeners for searchable dropdown
+    providerSearch.addEventListener("focus", openDropdown);
+    
+    providerSearch.addEventListener("input", () => {
+      if (!providerSelectWrapper.classList.contains("open")) {
+        openDropdown();
+      }
+      filterDropdownOptions();
+    });
+
+    providerSearch.addEventListener("keydown", (e) => {
+      const visibleOptions = Array.from(providerDropdown.querySelectorAll(".searchable-select-option:not(.hidden)"));
+      
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (!providerSelectWrapper.classList.contains("open")) {
+          openDropdown();
+        } else {
+          const newIndex = Math.min(highlightedIndex + 1, visibleOptions.length - 1);
+          updateHighlight(newIndex);
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const newIndex = Math.max(highlightedIndex - 1, 0);
+        updateHighlight(newIndex);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < visibleOptions.length) {
+          const key = visibleOptions[highlightedIndex].dataset.key;
+          selectProvider(key);
+          closeDropdown();
+          providerSearch.blur();
+        }
+      } else if (e.key === "Escape") {
+        closeDropdown();
+        providerSearch.blur();
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (!providerSelectWrapper.contains(e.target)) {
+        closeDropdown();
+      }
+    });
 
     function setStatus(msg, type) {
       statusEl.textContent = msg || "";
@@ -675,6 +1021,7 @@
         const data = await resp.json();
         providers = data.providers || data.Providers || [];
 
+        // Build hidden select for compatibility
         providerSelect.innerHTML = "";
         providers.forEach(p => {
           const opt = document.createElement("option");
@@ -682,11 +1029,15 @@
           opt.textContent = p.name || p.key;
           opt.dataset.landingUrl = p.landingUrl || p.landingURL || "";
           opt.dataset.defaultPdfPath = p.defaultPdfPath || p.defaultPDFPath || "";
+          opt.dataset.pdfApiUrl = p.pdfApiUrl || p.PDFAPIURL || "";
           providerSelect.appendChild(opt);
         });
 
+        // Build searchable dropdown
+        buildDropdownOptions();
+
         if (providers.length) {
-          updateProviderMeta();
+          selectProvider(providers[0].key);
           providerBadge.textContent = providers[0].key.toUpperCase();
           summaryHeader.textContent = "Provider: " + providers[0].key;
         } else {
@@ -702,13 +1053,13 @@
     }
 
     function updateProviderMeta() {
-      const opt = providerSelect.selectedOptions[0];
-      if (!opt) {
+      const provider = providers.find(p => p.key === selectedProviderKey);
+      if (!provider) {
         providerMeta.textContent = "";
         return;
       }
-      const landing = opt.dataset.landingUrl;
-      const pdfPath = opt.dataset.defaultPdfPath;
+      const landing = provider.landingUrl || provider.landingURL || "";
+      const pdfPath = provider.defaultPdfPath || provider.defaultPDFPath || "";
       let html = "";
       if (landing) {
         html += `Landing page: <a href="${landing}" target="_blank" rel="noreferrer">${landing}</a><br>`;
@@ -719,20 +1070,19 @@
       providerMeta.innerHTML = html;
     }
 
-    providerSelect.addEventListener("change", () => {
-      updateProviderMeta();
-      const key = providerSelect.value || "—";
-      providerBadge.textContent = key.toUpperCase();
-      summaryHeader.textContent = "Provider: " + key;
-      summaryGrid.innerHTML = "";
-      jsonOutput.textContent = "Click \"Load rates\" to fetch data.";
-      lastRates = null;
-      updateCostExplorer();
-      setStatus("", "");
-    });
+    function updateDownloadPdfBtn() {
+      const provider = providers.find(p => p.key === selectedProviderKey);
+      const pdfUrl = provider?.pdfApiUrl || provider?.PDFAPIURL || "";
+      if (pdfUrl) {
+        downloadPdfBtn.href = pdfUrl;
+        downloadPdfBtn.style.display = "inline-flex";
+      } else {
+        downloadPdfBtn.style.display = "none";
+      }
+    }
 
     async function loadRates() {
-      const provider = providerSelect.value;
+      const provider = selectedProviderKey;
       if (!provider) return;
       setLoading(true);
       setStatus("Loading rates for " + provider + "…");
@@ -846,13 +1196,13 @@
     }
 
     async function refreshProvider() {
-      const provider = providerSelect.value;
+      const provider = selectedProviderKey;
       if (!provider) return;
       setLoading(true);
       setStatus("Refreshing PDF for " + provider + "…");
 
       try {
-        const resp = await fetch(`/refresh/${encodeURIComponent(provider)}`, {
+        const resp = await fetch(`/internal/refresh/${encodeURIComponent(provider)}`, {
           method: "POST"
         });
         if (!resp.ok) {

@@ -4,6 +4,11 @@ metadata:
   name: {{ include "eratemanager.fullname" . }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.persistence.enabled }}
+  # Use Recreate strategy when using ReadWriteOnce PVC to avoid Multi-Attach errors
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app: {{ include "eratemanager.name" . }}
@@ -25,6 +30,11 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.app.port }}"
+            - name: ERATEMANAGER_DB_DRIVER
+              value: {{ .Values.db.driver | quote }}
+            - name: ERATEMANAGER_DB_DSN
+              value: {{ .Values.db.dsn | quote }}
+
           ports:
             - containerPort: {{ .Values.app.port }}
           volumeMounts:

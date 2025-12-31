@@ -5,6 +5,38 @@ image:
 
 replicaCount: 1
 
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: password
+    database: eratemanager
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+    tag: latest
+
+db:
+  # Use Postgres (postgrespool for connection pooling)
+  driver: "postgrespool"
+  # For standalone: eratemanager-postgresql
+  # For replication: eratemanager-postgresql-primary
+  dsn: "postgres://postgres:password@eratemanager-postgresql:5432/eratemanager?sslmode=disable"
+
+cronWorker:
+  enabled: false
+  # Interval in seconds between batch refresh runs.
+  intervalSeconds: 3600
+  replicaCount: 1
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+
 service:
   type: ClusterIP
   port: 80
@@ -12,9 +44,12 @@ service:
 app:
   port: 8000
 
-providers:
-  - key: cemc
-  - key: nes
+# Providers are now discovered dynamically via the /providers API endpoint.
+# No need to list them here - the helm chart will query the running application.
+
+# Refresh hook runs after install/upgrade to populate data for all discovered providers
+refreshHook:
+  enabled: true
 
 persistence:
   enabled: true
@@ -22,6 +57,7 @@ persistence:
   mountPath: /data
 
 cron:
+  enabled: true
   schedule: "0 3 * * *"
 
 gateway:
@@ -46,4 +82,16 @@ hpa:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: null
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
+batch:
+  enabled: true
+  schedule: "0 * * * *"    # every hour
+  intervalSeconds: 3600    # worker inside container runs every hour too
+
+# auto-generated DSN using PostgreSQL chart:
+dbPostgresURL: >-
+  postgres://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}
+  @{{ include "eratemanager.fullname" . }}-postgresql:5432/
+  {{ .Values.postgresql.auth.database }}?sslmode=disable
