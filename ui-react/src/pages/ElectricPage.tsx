@@ -37,7 +37,10 @@ export function ElectricPage() {
     loading: refreshing,
   } = useMutation(refreshProvider)
 
-  const providers = providersData?.providers || []
+  // Filter for electric providers only
+  const providers = (providersData?.providers || []).filter(
+    (p) => p.type === 'electric' || !p.type
+  )
 
   const handleLoadRates = async () => {
     if (!selectedProvider) return
