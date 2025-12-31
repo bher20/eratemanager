@@ -6,16 +6,23 @@
     name?: string;
     landingUrl?: string;
     defaultPdfPath?: string;
+    pdfApiUrl?: string;
   };
 
   let providers: Provider[] = [];
   let provider = "";
   let status = "";
   let statusClass = "";
+  let statusClassName = "";
   let loading = false;
   let data: any = null;
 
   let usage = 1000;
+
+  let currentProvider: Provider | undefined = undefined;
+  $: currentProvider = providers.find((p) => p.key === provider);
+
+  $: statusClassName = statusClass === "ok" ? "text-success" : statusClass === "error" ? "text-error" : "";
 
   onMount(async () => {
     try {
@@ -199,9 +206,18 @@
             >
               ↻ Refresh PDF
             </button>
+            {#if currentProvider && currentProvider.pdfApiUrl}
+              <a
+                class="btn btn-outline btn-sm"
+                href={currentProvider.pdfApiUrl}
+                download
+              >
+                ⬇ Download PDF
+              </a>
+            {/if}
           </div>
 
-          <div class:text-success={statusClass === "ok"} class:text-error={statusClass === "error"} class="text-xs min-h-[1.25rem]">
+          <div class={"text-xs min-h-[1.25rem] " + statusClassName}>
             {status}
           </div>
         </div>

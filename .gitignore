@@ -1,0 +1,11 @@
+/__MACOSX
+/*.db
+
+# Node.js (for changesets)
+node_modules/
+package-lock.json
+
+# Build artifacts
+/bin/
+*.zip
+*.tgz

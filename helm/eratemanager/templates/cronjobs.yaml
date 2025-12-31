@@ -1,31 +1,49 @@
-{{- if .Values.persistence.enabled }}
-{{- range $p := .Values.providers }}
----
+{{- if and .Values.persistence.enabled .Values.cron.enabled }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "eratemanager.fullname" $ }}-{{ $p.key }}-refresh
+  name: {{ include "eratemanager.fullname" . }}-refresh-all
 spec:
-  schedule: "{{ $.Values.cron.schedule }}"
+  schedule: "{{ .Values.cron.schedule }}"
   jobTemplate:
     spec:
       template:
         spec:
           restartPolicy: OnFailure
           containers:
-            - name: {{ $p.key }}-refresh
+            - name: refresh-all-providers
               image: curlimages/curl:8.10.1
               args:
                 - /bin/sh
                 - -c
                 - |
-                    echo "Waiting for eRateManager..."
-                    until curl -fsSL "http://eratemanager:80/readyz"; do
-                      echo "Backend not ready yet..."
-                      sleep 2
-                    done
+                  echo "Waiting for eRateManager backend..."
+                  until curl -fsSL "http://eratemanager:80/readyz"; do
+                    echo "Backend not ready yet..."
+                    sleep 2
+                  done
 
-                    echo "Backend is UP, refreshing {{ $p.key }}..."
-                    curl -fsSL "http://eratemanager:80/internal/refresh/{{ $p.key }}"
-{{- end }}
+                  echo "Backend is UP, discovering providers..."
+                  
+                  # Get all provider keys from the /providers endpoint
+                  PROVIDERS=$(curl -fsSL "http://eratemanager:80/providers" | \
+                    grep -o '"key":"[^"]*"' | \
+                    sed 's/"key":"//g' | \
+                    sed 's/"//g')
+                  
+                  if [ -z "$PROVIDERS" ]; then
+                    echo "No providers found, exiting."
+                    exit 0
+                  fi
+                  
+                  echo "Found providers: $PROVIDERS"
+                  
+                  # Refresh each provider
+                  for p in $PROVIDERS; do
+                    echo "Refreshing provider: $p"
+                    curl -fsSL "http://eratemanager:80/internal/refresh/$p" || echo "Warning: Failed to refresh $p"
+                    sleep 1
+                  done
+                  
+                  echo "All providers refreshed."
 {{- end }}
