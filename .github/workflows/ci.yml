@@ -121,7 +121,7 @@ jobs:
             --set cron.enabled=false \
             --set batch.enabled=false \
             --set refreshHook.enabled=false \
-            --set imagePullSecrets=[]
+            --set imagePullSecrets=null
 
       - name: Wait for deployment to be ready
         run: |
