@@ -19,9 +19,9 @@ func init() {
 
 // ParseWHUDRatesFromURL fetches the WHUD rates page and extracts water/sewer rates.
 func ParseWHUDRatesFromURL(url string) (*WaterRatesResponse, error) {
-	// WHUD server has a misconfigured SSL certificate chain (missing intermediate certs).
-	// We use an insecure client as a workaround.
-	client := InsecureHTTPClient()
+	// WHUD server doesn't send intermediate certificates in its chain.
+	// Use a client with the GoDaddy intermediate cert to enable proper verification.
+	client := WHUDHTTPClient()
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch WHUD rates page: %w", err)
