@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1
+
+### Patch Changes
+
+- 412a77c: Fix TLS certificate verification for WHUD water provider
+
+  The WHUD server has a misconfigured SSL certificate chain (missing intermediate certificates).
+  Added an insecure HTTP client as a workaround for servers with broken certificate chains.
+
 ## 0.5.0
 
 ### Minor Changes
