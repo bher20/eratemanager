@@ -2,7 +2,15 @@ suite: CronJob tests
 templates:
   - templates/cronjobs.yaml
 tests:
-  - it: should create a CronJob per provider
+  - it: should create a single CronJob for refreshing all providers
+    set:
+      persistence.enabled: true
+      cron.enabled: true
     asserts:
       - hasDocuments:
-          count: 2
+          count: 1
+      - isKind:
+          of: CronJob
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-eratemanager-refresh-all
