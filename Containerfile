@@ -37,6 +37,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
 ###############################
 FROM gcr.io/distroless/static
 
+# Copy CA certificates for TLS verification
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
 COPY --from=go-builder /app/eratemanager /eratemanager
 COPY --from=go-builder /app/internal /internal
 
