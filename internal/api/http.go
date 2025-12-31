@@ -132,6 +132,9 @@ func NewMux() *http.ServeMux {
 	RegisterRefreshHandler(mux, st)
 	RegisterProvidersHandler(mux)
 
+	// Water rates API
+	RegisterWaterHandlers(mux, st)
+
 	// Web UI
 	mux.Handle("/ui/", http.StripPrefix("/ui/", ui.Handler()))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
