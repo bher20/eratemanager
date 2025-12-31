@@ -1,0 +1,39 @@
+
+{{- if .Values.cronWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "eratemanager.fullname" . }}-cron
+  labels:
+    app: {{ include "eratemanager.name" . }}
+    app.kubernetes.io/component: cron
+spec:
+  replicas: {{ .Values.cronWorker.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "eratemanager.name" . }}
+      app.kubernetes.io/component: cron
+  template:
+    metadata:
+      labels:
+        app: {{ include "eratemanager.name" . }}
+        app.kubernetes.io/component: cron
+    spec:
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      serviceAccountName: {{ include "eratemanager.serviceAccountName" . }}
+      containers:
+        - name: cron
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["eratemanager", "cron"]
+          env:
+            - name: ERATEMANAGER_DB_DRIVER
+              value: {{ .Values.db.driver | quote }}
+            - name: ERATEMANAGER_DB_DSN
+              value: {{ .Values.db.dsn | quote }}
+            - name: CRON_INTERVAL_SECONDS
+              value: "{{ .Values.cronWorker.intervalSeconds }}"
+          resources:
+            {{- toYaml .Values.cronWorker.resources | nindent 12 }}
+{{- end }}
