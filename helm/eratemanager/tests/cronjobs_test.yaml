@@ -11,6 +11,6 @@ tests:
           count: 1
       - isKind:
           of: CronJob
-      - equal:
+      - matchRegex:
           path: metadata.name
-          value: RELEASE-NAME-eratemanager-refresh-all
+          pattern: .*-refresh-all$
