@@ -22,7 +22,7 @@ db:
   driver: "postgrespool"
   # For standalone: eratemanager-postgresql
   # For replication: eratemanager-postgresql-primary
-  dsn: "postgres://eratemanager:eratemanager@eratemanager-postgresql-primary:5432/eratemanager?sslmode=disable"
+  dsn: "postgres://eratemanager:eratemanager@eratemanager-postgresql:5432/eratemanager?sslmode=disable"
 
 cronWorker:
   enabled: false
