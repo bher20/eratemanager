@@ -17,7 +17,7 @@ spec:
       labels:
         app: {{ include "eratemanager.name" . }}
     spec:
-      {{- if .Values.imagePullSecrets }}
+      {{- if and .Values.imagePullSecrets (gt (len .Values.imagePullSecrets) 0) }}
       imagePullSecrets:
       {{- range .Values.imagePullSecrets }}
         - name: {{ .name }}
