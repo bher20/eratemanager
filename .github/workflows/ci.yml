@@ -112,7 +112,16 @@ jobs:
         run: |
           helm upgrade --install eratemanager ./helm/eratemanager \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
-            --set image.tag=${{ github.sha }}
+            --set image.tag=${{ github.sha }} \
+            --set gateway.enabled=false \
+            --set monitoring.enabled=false \
+            --set monitoring.serviceMonitor.enabled=false \
+            --set postgresql.enabled=false \
+            --set persistence.enabled=false \
+            --set cron.enabled=false \
+            --set batch.enabled=false \
+            --set refreshHook.enabled=false \
+            --set imagePullSecrets=[]
 
       - name: Wait for deployment to be ready
         run: |
