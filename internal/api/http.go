@@ -13,6 +13,7 @@ import (
 
 	"context"
 
+	"github.com/bher20/eratemanager/internal/api/swagger"
 	"github.com/bher20/eratemanager/internal/metrics"
 	migrate "github.com/bher20/eratemanager/internal/migrate"
 	"github.com/bher20/eratemanager/internal/rates"
@@ -125,15 +126,16 @@ func NewMux() *http.ServeMux {
 		_, _ = w.Write([]byte("live"))
 	})
 
-	// Rates API.
-	mux.HandleFunc("/rates/", handleRates(svc))
+	// Rates API - Electric (includes refresh endpoint)
+	mux.HandleFunc("/rates/electric/", handleElectricRates(svc, st))
 
-	// Internal refresh endpoint for CronJobs / manual refresh.
-	RegisterRefreshHandler(mux, st)
 	RegisterProvidersHandler(mux)
 
-	// Water rates API
+	// Rates API - Water
 	RegisterWaterHandlers(mux, st)
+
+	// Swagger API documentation
+	mux.Handle("/swagger/", http.StripPrefix("/swagger", swagger.Handler()))
 
 	// Web UI
 	mux.Handle("/ui/", http.StripPrefix("/ui/", ui.Handler()))
@@ -148,26 +150,32 @@ func NewMux() *http.ServeMux {
 	return mux
 }
 
-// handleRates returns a handler that serves /rates/{provider}/residential and /rates/{provider}/pdf using the rates.Service.
-func handleRates(svc *rates.Service) http.HandlerFunc {
+// handleElectricRates returns a handler that serves /rates/electric/{provider}/residential, /rates/electric/{provider}/pdf, and /rates/electric/{provider}/refresh.
+func handleElectricRates(svc *rates.Service, st storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Expected paths: /rates/{provider}/residential or /rates/{provider}/pdf
+		// Expected paths: /rates/electric/{provider}/residential, /rates/electric/{provider}/pdf, or /rates/electric/{provider}/refresh
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
-		if len(parts) != 3 || parts[0] != "rates" {
+		if len(parts) != 4 || parts[0] != "rates" || parts[1] != "electric" {
 			metrics.RequestErrorsTotal.WithLabelValues("unknown", r.URL.Path, "404").Inc()
 			http.NotFound(w, r)
 			return
 		}
 
-		providerKey := strings.ToLower(parts[1])
-		endpoint := parts[2]
+		providerKey := strings.ToLower(parts[2])
+		endpoint := parts[3]
+
+		// Handle refresh
+		if endpoint == "refresh" {
+			handleElectricRefresh(w, r, providerKey, st, start)
+			return
+		}
 
 		// Handle PDF download
 		if endpoint == "pdf" {
-			labelsPath := "/rates/pdf"
+			labelsPath := "/rates/electric/pdf"
 			defer func() {
 				dur := time.Since(start).Seconds()
 				metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
@@ -227,4 +235,67 @@ func handleRates(svc *rates.Service) http.HandlerFunc {
 			return
 		}
 	}
+}
+
+// handleElectricRefresh handles the refresh endpoint for electric providers.
+func handleElectricRefresh(w http.ResponseWriter, r *http.Request, providerKey string, st storage.Storage, start time.Time) {
+	labelsPath := "/rates/electric/refresh"
+	defer func() {
+		dur := time.Since(start).Seconds()
+		metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
+	}()
+
+	metrics.RequestsTotal.WithLabelValues(providerKey).Inc()
+
+	p, ok := rates.GetProvider(providerKey)
+	if !ok {
+		log.Printf("unknown provider %q for refresh", providerKey)
+		metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
+		http.NotFound(w, r)
+		return
+	}
+
+	// Step 1: Download the latest PDF
+	pdfURL, err := rates.RefreshProviderPDF(p)
+
+	resp := RefreshResponse{
+		Provider: providerKey,
+		PDFURL:   pdfURL,
+		Path:     p.DefaultPDFPath,
+	}
+
+	if err != nil {
+		log.Printf("refresh PDF for %s failed: %v", providerKey, err)
+		resp.Status = "error"
+		resp.Error = err.Error()
+		metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "500").Inc()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Step 2: Parse the PDF to extract rates
+	ratesResp, parseErr := rates.ParseProviderPDF(providerKey)
+	if parseErr != nil {
+		log.Printf("parse PDF for %s failed: %v", providerKey, parseErr)
+		resp.Status = "partial"
+		resp.Error = "PDF downloaded but parsing failed: " + parseErr.Error()
+	} else {
+		resp.Status = "success"
+		resp.Rates = ratesResp
+
+		// Save to storage if available
+		if st != nil && ratesResp != nil {
+			payload, _ := json.Marshal(ratesResp)
+			_ = st.SaveRatesSnapshot(r.Context(), storage.RatesSnapshot{
+				Provider:  providerKey,
+				Payload:   payload,
+				FetchedAt: ratesResp.FetchedAt,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
