@@ -9,6 +9,7 @@ interface StatCardProps {
   trendValue?: string
   icon?: React.ReactNode
   className?: string
+  href?: string
 }
 
 export function StatCard({
@@ -19,14 +20,10 @@ export function StatCard({
   trendValue,
   icon,
   className,
+  href,
 }: StatCardProps) {
-  return (
-    <div
-      className={cn(
-        'group relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5',
-        className
-      )}
-    >
+  const cardContent = (
+    <>
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
@@ -66,6 +63,31 @@ export function StatCard({
       )}
       {/* Decorative gradient */}
       <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+    </>
+  )
+
+  const cardClasses = cn(
+    'group relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5',
+    href && 'cursor-pointer',
+    className
+  )
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cardClasses}
+      >
+        {cardContent}
+      </a>
+    )
+  }
+
+  return (
+    <div className={cardClasses}>
+      {cardContent}
     </div>
   )
 }

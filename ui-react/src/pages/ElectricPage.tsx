@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -18,8 +19,11 @@ import { Zap, DollarSign, Calendar, RefreshCw, Download, AlertCircle } from 'luc
 import type { RatesResponse } from '@/lib/types'
 
 export function ElectricPage() {
-  const [selectedProvider, setSelectedProvider] = useState<string>('')
+  const [searchParams] = useSearchParams()
+  const urlProvider = searchParams.get('provider')
+  const [selectedProvider, setSelectedProvider] = useState<string>(urlProvider || '')
   const [ratesData, setRatesData] = useState<RatesResponse | null>(null)
+  const [autoLoaded, setAutoLoaded] = useState<boolean>(false)
 
   const { data: providersData, loading: loadingProviders } = useAsync(
     () => getProviders(),
@@ -41,6 +45,22 @@ export function ElectricPage() {
   const providers = (providersData?.providers || []).filter(
     (p) => p.type === 'electric' || !p.type
   )
+
+  // Auto-load rates if provider is specified in URL
+  useEffect(() => {
+    if (urlProvider && !autoLoaded && !loadingProviders && providers.length > 0) {
+      const providerExists = providers.some(p => p.key === urlProvider)
+      if (providerExists) {
+        setSelectedProvider(urlProvider)
+        loadRates(urlProvider).then(data => {
+          setRatesData(data)
+          setAutoLoaded(true)
+        }).catch(() => {
+          setAutoLoaded(true)
+        })
+      }
+    }
+  }, [urlProvider, autoLoaded, loadingProviders, providers])
 
   const handleLoadRates = async () => {
     if (!selectedProvider) return
