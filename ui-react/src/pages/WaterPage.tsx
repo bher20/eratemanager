@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -18,11 +19,14 @@ import { Droplets, DollarSign, Calendar, Download, AlertCircle, Waves } from 'lu
 import type { WaterRatesResponse } from '@/lib/types'
 
 export function WaterPage() {
-  const [selectedProvider, setSelectedProvider] = useState<string>('')
+  const [searchParams] = useSearchParams()
+  const urlProvider = searchParams.get('provider')
+  const [selectedProvider, setSelectedProvider] = useState<string>(urlProvider || '')
   const [ratesData, setRatesData] = useState<WaterRatesResponse | null>(null)
   const [usage, setUsage] = useState<number>(5000) // Default 5000 gallons
+  const [autoLoaded, setAutoLoaded] = useState<boolean>(false)
 
-  const { data: providersData, loading: loadingProviders } = useAsync(
+  const { data: providers, loading: loadingProviders } = useAsync(
     () => getWaterProviders(),
     []
   )
@@ -33,7 +37,23 @@ export function WaterPage() {
     error: ratesError,
   } = useMutation(getWaterRates)
 
-  const providers = providersData?.providers || []
+  const providersList = providers || []
+
+  // Auto-load rates if provider is specified in URL
+  useEffect(() => {
+    if (urlProvider && !autoLoaded && !loadingProviders && providersList.length > 0) {
+      const providerExists = providersList.some(p => p.key === urlProvider)
+      if (providerExists) {
+        setSelectedProvider(urlProvider)
+        loadRates(urlProvider).then(data => {
+          setRatesData(data)
+          setAutoLoaded(true)
+        }).catch(() => {
+          setAutoLoaded(true)
+        })
+      }
+    }
+  }, [urlProvider, autoLoaded, loadingProviders, providersList])
 
   const handleLoadRates = async () => {
     if (!selectedProvider) return
@@ -93,7 +113,7 @@ export function WaterPage() {
                   onChange={(e) => setSelectedProvider(e.target.value)}
                   options={[
                     { value: '', label: 'Select a provider...' },
-                    ...providers.map((p) => ({
+                    ...providersList.map((p) => ({
                       value: p.key,
                       label: p.name || p.key.toUpperCase(),
                     })),

@@ -112,9 +112,9 @@ func withAPIURLs(list []ProviderDescriptor) []ProviderDescriptor {
 		if list[i].Key != "" {
 			switch list[i].Type {
 			case ProviderTypeElectric:
-				list[i].PDFAPIURL = "/rates/" + list[i].Key + "/pdf"
+				list[i].PDFAPIURL = "/rates/electric/" + list[i].Key + "/pdf"
 			case ProviderTypeWater:
-				list[i].HTMLAPIURL = "/water/rates/" + list[i].Key
+				list[i].HTMLAPIURL = "/rates/water/" + list[i].Key
 			}
 		}
 	}

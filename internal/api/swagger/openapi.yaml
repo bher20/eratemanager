@@ -1,0 +1,414 @@
+openapi: 3.0.3
+info:
+  title: eRateManager API
+  description: |
+    API for managing and retrieving utility rate information from various providers.
+    
+    eRateManager tracks electricity and water rates from utility providers like CEMC, NES, KUB (electric)
+    and WHUD (water). It provides real-time rate data and calculates estimated costs.
+  version: "0.5.0"
+  contact:
+    name: eRateManager
+  license:
+    name: MIT
+
+servers:
+  - url: /
+    description: Current server
+
+tags:
+  - name: Providers
+    description: Utility provider information
+  - name: Electric Rates
+    description: Electric utility rate data
+  - name: Water Rates
+    description: Water and sewer utility rate data
+  - name: Refresh
+    description: Data refresh endpoints
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /providers:
+    get:
+      tags:
+        - Providers
+      summary: List all providers
+      description: Returns a list of all configured utility providers (electric and water)
+      operationId: getProviders
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvidersResponse'
+
+  /rates/electric/{provider}/residential:
+    get:
+      tags:
+        - Electric Rates
+      summary: Get residential electric rates
+      description: Returns residential electricity rates for the specified provider
+      operationId: getResidentialRates
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider key (e.g., cemc, nes, kub)
+          schema:
+            type: string
+            enum: [cemc, nes, kub]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElectricRatesResponse'
+        '404':
+          description: Provider not found
+
+  /rates/electric/{provider}/pdf:
+    get:
+      tags:
+        - Electric Rates
+      summary: Download rate schedule PDF
+      description: Downloads the rate schedule PDF for the specified provider
+      operationId: getRatesPdf
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Provider or PDF not found
+
+  /rates/water/providers:
+    get:
+      tags:
+        - Water Rates
+      summary: List water providers
+      description: Returns a list of configured water utility providers
+      operationId: getWaterProviders
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WaterProvider'
+
+  /rates/water/{provider}:
+    get:
+      tags:
+        - Water Rates
+      summary: Get water rates
+      description: Returns water and sewer rates for the specified provider
+      operationId: getWaterRates
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Water provider key (e.g., whud)
+          schema:
+            type: string
+            enum: [whud]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaterRatesResponse'
+        '404':
+          description: Provider not found
+
+  /rates/electric/{provider}/refresh:
+    post:
+      tags:
+        - Refresh
+      summary: Refresh electric provider rates
+      description: Triggers a refresh of rate data from the provider's source
+      operationId: refreshProvider
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '500':
+          description: Refresh failed
+
+  /rates/water/{provider}/refresh:
+    post:
+      tags:
+        - Refresh
+      summary: Refresh water provider rates
+      description: Triggers a refresh of water rate data from the provider's source
+      operationId: refreshWaterProvider
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Water provider key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+
+  /healthz:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns OK if the service is running
+      operationId: healthz
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /readyz:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Returns ready if the service is ready to accept traffic (database connected)
+      operationId: readyz
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ready
+        '503':
+          description: Service not ready
+
+  /livez:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: Returns live if the service is alive
+      operationId: livez
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: live
+
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics
+      operationId: metrics
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    ProvidersResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Provider'
+
+    Provider:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Unique provider identifier
+          example: cemc
+        type:
+          type: string
+          description: Provider type (electric or water)
+          enum: [electric, water]
+          example: electric
+        name:
+          type: string
+          description: Human-readable provider name
+          example: Cumberland Electric Membership Corporation
+        landingUrl:
+          type: string
+          description: Provider's rate information page
+          example: https://www.cemc.org/rates
+        htmlApiUrl:
+          type: string
+          description: API endpoint for this provider's rates
+          example: /rates/cemc/residential
+        notes:
+          type: string
+          description: Additional notes about the provider
+
+    WaterProvider:
+      type: object
+      properties:
+        key:
+          type: string
+          example: whud
+        type:
+          type: string
+          example: water
+        name:
+          type: string
+          example: White House Utility District
+        landingUrl:
+          type: string
+          example: https://www.whud.org/rates-and-fees/
+        htmlApiUrl:
+          type: string
+          example: /water/rates/whud
+        notes:
+          type: string
+
+    ElectricRatesResponse:
+      type: object
+      properties:
+        provider_key:
+          type: string
+          example: cemc
+        provider_name:
+          type: string
+          example: Cumberland Electric Membership Corporation
+        fetched_at:
+          type: string
+          format: date-time
+        pdf_url:
+          type: string
+        rates:
+          $ref: '#/components/schemas/ElectricRates'
+
+    ElectricRates:
+      type: object
+      properties:
+        customer_charge:
+          type: number
+          format: float
+          description: Monthly customer charge
+          example: 22.00
+        energy_rate:
+          type: number
+          format: float
+          description: Rate per kWh
+          example: 0.10927
+        demand_rate:
+          type: number
+          format: float
+          description: Demand rate if applicable
+        fuel_cost_adjustment:
+          type: number
+          format: float
+          description: TVA fuel cost adjustment
+        effective_date:
+          type: string
+          description: When rates became effective
+
+    WaterRatesResponse:
+      type: object
+      properties:
+        provider_key:
+          type: string
+          example: whud
+        provider_name:
+          type: string
+          example: White House Utility District
+        fetched_at:
+          type: string
+          format: date-time
+        water:
+          $ref: '#/components/schemas/WaterRateDetails'
+        sewer:
+          $ref: '#/components/schemas/SewerRateDetails'
+
+    WaterRateDetails:
+      type: object
+      properties:
+        base_charge:
+          type: number
+          format: float
+          description: Monthly base charge
+          example: 11.03
+        use_rate:
+          type: number
+          format: float
+          description: Rate per unit of water
+          example: 0.00573
+        use_rate_unit:
+          type: string
+          description: Unit for use rate
+          example: per gallon
+        effective_date:
+          type: string
+
+    SewerRateDetails:
+      type: object
+      properties:
+        base_charge:
+          type: number
+          format: float
+          example: 13.73
+        use_rate:
+          type: number
+          format: float
+          example: 0.00809
+        use_rate_unit:
+          type: string
+          example: per gallon
+        effective_date:
+          type: string
+
+    RefreshResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        pdf_url:
+          type: string
+        error:
+          type: string

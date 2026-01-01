@@ -1,7 +1,7 @@
 import type {
   ProvidersResponse,
   RatesResponse,
-  WaterProvidersResponse,
+  WaterProvider,
   WaterRatesResponse,
   RefreshResponse,
 } from './types'
@@ -31,26 +31,26 @@ export async function getProviders(): Promise<ProvidersResponse> {
 }
 
 export async function getResidentialRates(providerKey: string): Promise<RatesResponse> {
-  return fetchApi<RatesResponse>(`/rates/${encodeURIComponent(providerKey)}/residential`)
+  return fetchApi<RatesResponse>(`/rates/electric/${encodeURIComponent(providerKey)}/residential`)
 }
 
 export async function refreshProvider(providerKey: string): Promise<RefreshResponse> {
-  return fetchApi<RefreshResponse>(`/refresh/${encodeURIComponent(providerKey)}`, {
+  return fetchApi<RefreshResponse>(`/rates/electric/${encodeURIComponent(providerKey)}/refresh`, {
     method: 'POST',
   })
 }
 
 // Water Providers
-export async function getWaterProviders(): Promise<WaterProvidersResponse> {
-  return fetchApi<WaterProvidersResponse>('/water/providers')
+export async function getWaterProviders(): Promise<WaterProvider[]> {
+  return fetchApi<WaterProvider[]>('/rates/water/providers')
 }
 
 export async function getWaterRates(providerKey: string): Promise<WaterRatesResponse> {
-  return fetchApi<WaterRatesResponse>(`/water/rates/${encodeURIComponent(providerKey)}`)
+  return fetchApi<WaterRatesResponse>(`/rates/water/${encodeURIComponent(providerKey)}`)
 }
 
 export async function refreshWaterProvider(providerKey: string): Promise<RefreshResponse> {
-  return fetchApi<RefreshResponse>(`/water/refresh/${encodeURIComponent(providerKey)}`, {
+  return fetchApi<RefreshResponse>(`/rates/water/${encodeURIComponent(providerKey)}/refresh`, {
     method: 'POST',
   })
 }
