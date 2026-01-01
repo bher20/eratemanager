@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0
+## 0.1.0
 
 ### Minor Changes
 
@@ -83,7 +83,7 @@
   - Responsive design for mobile and desktop
   - SPA routing with proper fallback handling in Go backend
 
-## 0.5.2
+## 0.0.5
 
 ### Patch Changes
 
@@ -93,7 +93,7 @@
   complete certificate chains. This maintains proper TLS verification while
   working around misconfigured servers like whud.org.
 
-## 0.5.1
+## 0.0.4
 
 ### Patch Changes
 
@@ -102,7 +102,7 @@
   The WHUD server has a misconfigured SSL certificate chain (missing intermediate certificates).
   Added an insecure HTTP client as a workaround for servers with broken certificate chains.
 
-## 0.5.0
+## 0.0.3
 
 ### Minor Changes
 
@@ -127,7 +127,7 @@
   - Providers now have a `type` field: `"electric"` or `"water"`
   - New `/water/*` endpoints for water-specific data
 
-## 0.4.1
+## 0.0.2
 
 ### Patch Changes
 
@@ -146,7 +146,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2025-12-31
+## 0.0.1
 
 ### Fixed
 
