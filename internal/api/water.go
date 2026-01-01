@@ -77,13 +77,16 @@ func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage) {
 	}
 
 	// Water providers list
-	mux.HandleFunc("/water/providers", handleWaterProviders)
+	mux.HandleFunc("/rates/water/providers", handleWaterProviders)
 
-	// Water rates endpoint
-	mux.HandleFunc("/water/rates/", handleWaterRates(waterSvc))
-
-	// Water refresh endpoint
-	mux.HandleFunc("/internal/refresh/water/", handleWaterRefresh(waterSvc))
+	// Water refresh endpoint (must be registered before rates to match first)
+	mux.HandleFunc("/rates/water/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/refresh") {
+			handleWaterRefresh(waterSvc)(w, r)
+			return
+		}
+		handleWaterRates(waterSvc)(w, r)
+	})
 }
 
 // handleWaterProviders returns the list of water providers.
@@ -98,21 +101,22 @@ func handleWaterProviders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleWaterRates returns a handler for /water/rates/{provider}
+// handleWaterRates returns a handler for /rates/water/{provider}
 func handleWaterRates(svc *WaterService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Expected path: /water/rates/{provider}
-		path := strings.TrimPrefix(r.URL.Path, "/water/rates/")
+		// Expected path: /rates/water/{provider}
+		path := strings.TrimPrefix(r.URL.Path, "/rates/water/")
 		providerKey := strings.ToLower(strings.TrimSuffix(path, "/"))
 
-		if providerKey == "" {
+		if providerKey == "" || providerKey == "providers" {
+			// Skip if this is the providers endpoint
 			http.NotFound(w, r)
 			return
 		}
 
-		labelsPath := "/water/rates"
+		labelsPath := "/rates/water"
 		defer func() {
 			dur := time.Since(start).Seconds()
 			metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
@@ -144,11 +148,13 @@ func handleWaterRates(svc *WaterService) http.HandlerFunc {
 	}
 }
 
-// handleWaterRefresh handles /internal/refresh/water/{provider}
+// handleWaterRefresh handles /rates/water/{provider}/refresh
 func handleWaterRefresh(svc *WaterService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/internal/refresh/water/")
-		providerKey := strings.ToLower(strings.TrimSuffix(path, "/"))
+		// Path: /rates/water/{provider}/refresh
+		path := strings.TrimPrefix(r.URL.Path, "/rates/water/")
+		path = strings.TrimSuffix(path, "/refresh")
+		providerKey := strings.ToLower(strings.Trim(path, "/"))
 
 		if providerKey == "" {
 			http.Error(w, "provider key required", http.StatusBadRequest)

@@ -53,11 +53,13 @@ export interface WaterRatesResponse {
   sewer?: SewerRateDetails
 }
 
-export interface WaterProvidersResponse {
-  providers: Array<{
-    key: string
-    name: string
-  }>
+export interface WaterProvider {
+  key: string
+  name: string
+  type?: string
+  htmlApiUrl?: string
+  landingUrl?: string
+  notes?: string
 }
 
 export interface RefreshResponse {

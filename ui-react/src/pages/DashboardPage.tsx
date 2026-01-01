@@ -44,21 +44,22 @@ export function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Electric Providers"
-              value={String(electricProviders?.providers?.length || 0)}
+              value={String(electricProviders?.providers?.filter(p => p.type === 'electric').length || 0)}
               subtitle="Available utilities"
               icon={<Zap className="h-5 w-5" />}
             />
             <StatCard
               title="Water Providers"
-              value={String(waterProviders?.providers?.length || 0)}
+              value={String(waterProviders?.length || 0)}
               subtitle="Available utilities"
               icon={<Droplets className="h-5 w-5" />}
             />
             <StatCard
               title="API Status"
               value="Online"
-              subtitle="All systems operational"
+              subtitle="View API Documentation"
               icon={<Activity className="h-5 w-5" />}
+              href="/swagger/"
             />
             <StatCard
               title="Data Source"
@@ -78,7 +79,7 @@ export function DashboardPage() {
                     <Zap className="h-6 w-6 text-yellow-500" />
                   </div>
                   <Badge>
-                    {electricProviders?.providers?.length || 0} providers
+                    {electricProviders?.providers?.filter(p => p.type === 'electric').length || 0} providers
                   </Badge>
                 </div>
                 <CardTitle className="mt-4">Electric Rates</CardTitle>
@@ -88,14 +89,15 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {electricProviders?.providers?.slice(0, 3).map((provider) => (
-                    <div
+                  {electricProviders?.providers?.filter(p => p.type === 'electric').slice(0, 3).map((provider) => (
+                    <Link
                       key={provider.key}
-                      className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm"
+                      to={`/electric?provider=${provider.key}`}
+                      className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm transition-colors hover:bg-muted"
                     >
                       <span>{provider.name || provider.key.toUpperCase()}</span>
-                      <span className="text-muted-foreground">→</span>
-                    </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                    </Link>
                   ))}
                 </div>
                 <Link
@@ -118,7 +120,7 @@ export function DashboardPage() {
                     <Droplets className="h-6 w-6 text-blue-500" />
                   </div>
                   <Badge>
-                    {waterProviders?.providers?.length || 0} providers
+                    {waterProviders?.length || 0} providers
                   </Badge>
                 </div>
                 <CardTitle className="mt-4">Water Rates</CardTitle>
@@ -128,16 +130,17 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {waterProviders?.providers?.slice(0, 3).map((provider) => (
-                    <div
+                  {waterProviders?.slice(0, 3).map((provider) => (
+                    <Link
                       key={provider.key}
-                      className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm"
+                      to={`/water?provider=${provider.key}`}
+                      className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm transition-colors hover:bg-muted"
                     >
                       <span>{provider.name || provider.key.toUpperCase()}</span>
-                      <span className="text-muted-foreground">→</span>
-                    </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                    </Link>
                   ))}
-                  {(!waterProviders?.providers || waterProviders.providers.length === 0) && (
+                  {(!waterProviders || waterProviders.length === 0) && (
                     <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
                       No water providers configured
                     </div>
