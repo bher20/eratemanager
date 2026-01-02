@@ -7,11 +7,11 @@ replicaCount: 1
 
 # PostgreSQL subchart configuration
 postgresql:
-  enabled: true
-  auth:
-    username: postgres
-    password: password
-    database: eratemanager
+  enabled: false
+  # auth:
+  #   username: <provided-at-runtime>
+  #   password: <provided-at-runtime>
+  #   database: eratemanager
   image:
     registry: docker.io
     repository: bitnami/postgresql
@@ -20,9 +20,8 @@ postgresql:
 db:
   # Use Postgres (postgrespool for connection pooling)
   driver: "postgrespool"
-  # For standalone: eratemanager-postgresql
-  # For replication: eratemanager-postgresql-primary
-  dsn: "postgres://postgres:password@eratemanager-postgresql:5432/eratemanager?sslmode=disable"
+  # DSN is dynamically generated using the postgresql auth values if not provided here.
+  # dsn: ""
 
 cronWorker:
   enabled: false
@@ -52,22 +51,18 @@ refreshHook:
   enabled: true
 
 persistence:
-  enabled: true
+  enabled: false
   size: 1Gi
   mountPath: /data
 
-cron:
-  enabled: true
-  schedule: "0 3 * * *"
-
 gateway:
-  enabled: true
+  enabled: false
   name: public-gateway
   namespace: default
   hostname: rates.example.com
 
 monitoring:
-  enabled: true
+  enabled: false
   serviceMonitor:
     enabled: true
     namespace: ""
@@ -82,16 +77,10 @@ hpa:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: null
 
-imagePullSecrets:
-  - name: ghcr-pull-secret
+imagePullSecrets: []
+  # - name: ghcr-pull-secret
 
 batch:
   enabled: true
   schedule: "0 * * * *"    # every hour
   intervalSeconds: 3600    # worker inside container runs every hour too
-
-# auto-generated DSN using PostgreSQL chart:
-dbPostgresURL: >-
-  postgres://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}
-  @{{ include "eratemanager.fullname" . }}-postgresql:5432/
-  {{ .Values.postgresql.auth.database }}?sslmode=disable

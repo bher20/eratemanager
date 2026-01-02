@@ -324,7 +324,7 @@ func refreshProviderWithTracking(ctx context.Context, svc *rates.Service, st sto
 		StartedAt: time.Now(),
 	})
 
-	result := refreshProviderWithRetry(ctx, svc, provider, cfg)
+	result := refreshProviderWithRetry(ctx, svc, st, provider, cfg)
 
 	// Update progress based on result
 	now := time.Now()
@@ -350,13 +350,20 @@ func refreshProviderWithTracking(ctx context.Context, svc *rates.Service, st sto
 }
 
 // refreshProviderWithRetry attempts to refresh a provider with retries.
-func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, provider string, cfg BatchConfig) ProviderResult {
+func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, st storage.Storage, provider string, cfg BatchConfig) ProviderResult {
 	result := ProviderResult{
 		Provider: provider,
 		Attempts: 0,
 	}
 
 	started := time.Now()
+
+	// Check provider type
+	p, ok := rates.GetProvider(provider)
+	if !ok {
+		result.Error = fmt.Errorf("unknown provider: %s", provider)
+		return result
+	}
 
 	for attempt := 0; attempt <= cfg.RetryAttempts; attempt++ {
 		result.Attempts = attempt + 1
@@ -374,8 +381,19 @@ func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, provider 
 			default:
 			}
 
-			_, err := svc.GetResidential(attemptCtx, provider)
-			return err
+			if p.Type == rates.ProviderTypeElectric {
+				// Ensure PDF is present/refreshed
+				if _, err := rates.RefreshProviderPDF(p); err != nil {
+					return fmt.Errorf("refresh pdf: %w", err)
+				}
+				_, err := svc.GetResidential(attemptCtx, provider)
+				return err
+			} else if p.Type == rates.ProviderTypeWater {
+				waterSvc := rates.NewWaterServiceWithStorage(st)
+				_, err := waterSvc.ForceRefresh(attemptCtx, provider)
+				return err
+			}
+			return fmt.Errorf("unsupported provider type: %s", p.Type)
 		}()
 
 		if err == nil {

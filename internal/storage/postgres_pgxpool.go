@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,42 +74,7 @@ func (s *PostgresPoolStorage) UpdateScheduledJob(ctx context.Context, name strin
 }
 
 func (s *PostgresPoolStorage) Migrate(ctx context.Context) error {
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS providers (
-            key TEXT PRIMARY KEY,
-            name TEXT,
-            landing_url TEXT,
-            default_pdf_path TEXT,
-            notes TEXT
-        );`,
-		`CREATE TABLE IF NOT EXISTS rates_snapshots (
-            id SERIAL PRIMARY KEY,
-            provider TEXT NOT NULL,
-            payload BYTEA NOT NULL,
-            fetched_at TIMESTAMPTZ NOT NULL
-        );`,
-		`CREATE TABLE IF NOT EXISTS batch_progress (
-            batch_id TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            status TEXT NOT NULL,
-            started_at TIMESTAMPTZ,
-            completed_at TIMESTAMPTZ,
-            error_message TEXT,
-            retry_count INTEGER DEFAULT 0,
-            PRIMARY KEY (batch_id, provider)
-        );`,
-		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
-		`CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		);`,
-	}
-	for _, stmt := range stmts {
-		if _, err := s.pool.Exec(ctx, stmt); err != nil {
-			return err
-		}
-	}
+	// Migrations are handled by goose in internal/migrate
 	return nil
 }
 
@@ -263,5 +229,131 @@ func (s *PostgresPoolStorage) SetSetting(ctx context.Context, key, value string)
 		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, key, value, time.Now())
+	return err
+}
+
+// Users
+
+func (s *PostgresPoolStorage) CreateUser(ctx context.Context, user User) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, user.ID, user.Username, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt)
+	return err
+}
+
+func (s *PostgresPoolStorage) GetUser(ctx context.Context, id string) (*User, error) {
+	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
+	var u User
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *PostgresPoolStorage) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
+	var u User
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *PostgresPoolStorage) UpdateUser(ctx context.Context, user User) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET username = $1, password_hash = $2, role = $3, updated_at = $4 WHERE id = $5
+	`, user.Username, user.PasswordHash, user.Role, user.UpdatedAt, user.ID)
+	return err
+}
+
+func (s *PostgresPoolStorage) DeleteUser(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
+}
+
+func (s *PostgresPoolStorage) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// Tokens
+
+func (s *PostgresPoolStorage) CreateToken(ctx context.Context, token Token) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO tokens (id, user_id, name, token_hash, role, created_at, expires_at, last_used_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, token.ID, token.UserID, token.Name, token.TokenHash, token.Role, token.CreatedAt, token.ExpiresAt, token.LastUsedAt)
+	return err
+}
+
+func (s *PostgresPoolStorage) GetToken(ctx context.Context, id string) (*Token, error) {
+	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE id = $1`, id)
+	var t Token
+	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (s *PostgresPoolStorage) GetTokenByHash(ctx context.Context, hash string) (*Token, error) {
+	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE token_hash = $1`, hash)
+	var t Token
+	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (s *PostgresPoolStorage) ListTokens(ctx context.Context, userID string) ([]Token, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Token
+	for rows.Next() {
+		var t Token
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresPoolStorage) DeleteToken(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM tokens WHERE id = $1`, id)
+	return err
+}
+
+func (s *PostgresPoolStorage) UpdateTokenLastUsed(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE tokens SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
 	return err
 }

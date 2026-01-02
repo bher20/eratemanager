@@ -14,6 +14,8 @@ type MemoryStorage struct {
 	snaps         map[string]RatesSnapshot
 	batchProgress map[string]BatchProgress
 	settings      map[string]string
+	users         map[string]User
+	tokens        map[string]Token
 }
 
 // NewMemory returns a MemoryStorage initialized with default providers.
@@ -23,6 +25,8 @@ func NewMemory() *MemoryStorage {
 		snaps:         make(map[string]RatesSnapshot),
 		batchProgress: make(map[string]BatchProgress),
 		settings:      make(map[string]string),
+		users:         make(map[string]User),
+		tokens:        make(map[string]Token),
 	}
 	return m
 }
@@ -36,6 +40,8 @@ func NewMemoryWithProviders(list []Provider) *MemoryStorage {
 		snaps:         make(map[string]RatesSnapshot),
 		batchProgress: make(map[string]BatchProgress),
 		settings:      make(map[string]string),
+		users:         make(map[string]User),
+		tokens:        make(map[string]Token),
 	}
 	for _, p := range list {
 		m.providers[p.Key] = p
@@ -142,5 +148,122 @@ func (m *MemoryStorage) SetSetting(ctx context.Context, key, value string) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.settings[key] = value
+	return nil
+}
+
+// Users
+
+func (m *MemoryStorage) CreateUser(ctx context.Context, user User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.users[user.ID] = user
+	return nil
+}
+
+func (m *MemoryStorage) GetUser(ctx context.Context, id string) (*User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	u, ok := m.users[id]
+	if !ok {
+		return nil, nil
+	}
+	return &u, nil
+}
+
+func (m *MemoryStorage) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, u := range m.users {
+		if u.Username == username {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *MemoryStorage) UpdateUser(ctx context.Context, user User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.users[user.ID]; !ok {
+		return nil // or error
+	}
+	m.users[user.ID] = user
+	return nil
+}
+
+func (m *MemoryStorage) DeleteUser(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.users, id)
+	return nil
+}
+
+func (m *MemoryStorage) ListUsers(ctx context.Context) ([]User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []User
+	for _, u := range m.users {
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+// Tokens
+
+func (m *MemoryStorage) CreateToken(ctx context.Context, token Token) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tokens[token.ID] = token
+	return nil
+}
+
+func (m *MemoryStorage) GetToken(ctx context.Context, id string) (*Token, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	t, ok := m.tokens[id]
+	if !ok {
+		return nil, nil
+	}
+	return &t, nil
+}
+
+func (m *MemoryStorage) GetTokenByHash(ctx context.Context, hash string) (*Token, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, t := range m.tokens {
+		if t.TokenHash == hash {
+			return &t, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *MemoryStorage) ListTokens(ctx context.Context, userID string) ([]Token, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []Token
+	for _, t := range m.tokens {
+		if t.UserID == userID {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (m *MemoryStorage) DeleteToken(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.tokens, id)
+	return nil
+}
+
+func (m *MemoryStorage) UpdateTokenLastUsed(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t, ok := m.tokens[id]; ok {
+		now := time.Now()
+		t.LastUsedAt = &now
+		m.tokens[id] = t
+	}
 	return nil
 }

@@ -1,5 +1,6 @@
 /__MACOSX
 /*.db
+/values.local.yaml
 
 # Node.js (for changesets)
 node_modules/

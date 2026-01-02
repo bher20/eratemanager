@@ -9,43 +9,24 @@ metadata:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
+  backoffLimit: 10
   template:
     spec:
-      restartPolicy: Never
+      restartPolicy: OnFailure
+      {{- if and .Values.imagePullSecrets (gt (len .Values.imagePullSecrets) 0) }}
+      imagePullSecrets:
+      {{- range .Values.imagePullSecrets }}
+        - name: {{ .name }}
+      {{- end }}
+      {{- end }}
       containers:
         - name: refresh-all-providers
-          image: curlimages/curl:8.10.1
-          args:
-            - /bin/sh
-            - -c
-            - |
-              echo "Waiting for eRateManager backend..."
-              until curl -fsSL "http://eratemanager:80/readyz"; do
-                echo "Backend not ready yet..."
-                sleep 2
-              done
-
-              echo "Backend is UP, discovering providers..."
-              
-              # Get all provider keys from the /providers endpoint
-              PROVIDERS=$(curl -fsSL "http://eratemanager:80/providers" | \
-                grep -o '"key":"[^"]*"' | \
-                sed 's/"key":"//g' | \
-                sed 's/"//g')
-              
-              if [ -z "$PROVIDERS" ]; then
-                echo "No providers found, exiting."
-                exit 0
-              fi
-              
-              echo "Found providers: $PROVIDERS"
-              
-              # Refresh each provider
-              for p in $PROVIDERS; do
-                echo "Refreshing provider: $p"
-                curl -fsSL "http://eratemanager:80/internal/refresh/$p" || echo "Warning: Failed to refresh $p"
-                sleep 1
-              done
-              
-              echo "All providers refreshed."
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/eratemanager", "batch"]
+          env:
+            - name: ERATEMANAGER_DB_DRIVER
+              value: {{ .Values.db.driver | quote }}
+            - name: ERATEMANAGER_DB_DSN
+              value: {{ include "eratemanager.db.dsn" . | quote }}
 {{- end }}

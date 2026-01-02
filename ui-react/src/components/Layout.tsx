@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { StatusIndicator } from '@/components'
+import { useAuth } from '@/context/AuthContext'
 import {
   Zap,
   Droplets,
@@ -9,6 +10,13 @@ import {
   Moon,
   Sun,
   Menu,
+  Key,
+  LogOut,
+  ChevronDown,
+  ChevronRight,
+  User,
+  Shield,
+  Lock
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -16,16 +24,109 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
-const navigation = [
+type NavItem = {
+  name: string
+  href?: string
+  icon?: any
+  children?: NavItem[]
+}
+
+const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Electric Rates', href: '/electric', icon: Zap },
   { name: 'Water Rates', href: '/water', icon: Droplets },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { 
+    name: 'Settings', 
+    icon: Settings,
+    children: [
+      { name: 'General', href: '/settings/general', icon: Settings },
+      { name: 'Users', href: '/settings/users', icon: User },
+      { 
+        name: 'RBAC', 
+        icon: Shield,
+        children: [
+          { name: 'Roles', href: '/settings/rbac/roles', icon: Shield },
+          { name: 'Privileges', href: '/settings/rbac/privileges', icon: Lock }
+        ]
+      }
+    ]
+  },
 ]
+
+const SidebarItem = ({ item, depth = 0, setSidebarOpen }: { item: NavItem, depth?: number, setSidebarOpen: (open: boolean) => void }) => {
+  const location = useLocation()
+  const [isOpen, setIsOpen] = useState(false)
+  
+  useEffect(() => {
+    const isChildActive = (item: NavItem): boolean => {
+      if (item.href && location.pathname === item.href) return true
+      if (item.children) return item.children.some(isChildActive)
+      return false
+    }
+    if (isChildActive(item)) {
+      setIsOpen(true)
+    }
+  }, [location.pathname, item])
+
+  const hasChildren = item.children && item.children.length > 0
+  const Icon = item.icon
+  const paddingLeft = depth === 0 ? undefined : `${depth * 1.5 + 0.75}rem`
+
+  if (hasChildren) {
+    return (
+      <div className="space-y-1">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={cn(
+            'flex w-full items-center justify-between gap-3 rounded-lg py-2.5 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-muted hover:text-foreground',
+            depth === 0 ? 'px-3' : 'pr-3'
+          )}
+          style={{ paddingLeft }}
+        >
+          <div className="flex items-center gap-3">
+            {Icon && <Icon className="h-5 w-5" />}
+            {item.name}
+          </div>
+          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+        
+        {isOpen && (
+          <div className="space-y-1">
+            {item.children!.map((child) => (
+              <SidebarItem key={child.name} item={child} depth={depth + 1} setSidebarOpen={setSidebarOpen} />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <NavLink
+      to={item.href!}
+      onClick={() => setSidebarOpen(false)}
+      className={({ isActive }) =>
+        cn(
+          'flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-all duration-200',
+          isActive
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          depth === 0 ? 'px-3' : 'pr-3'
+        )
+      }
+      style={{ paddingLeft }}
+    >
+      {Icon && <Icon className="h-5 w-5" />}
+      {item.name}
+    </NavLink>
+  )
+}
 
 export function Layout({ children }: LayoutProps) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const { logout, user } = useAuth()
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
@@ -66,29 +167,72 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-1 px-3 py-4">
+          <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {navigation.map((item) => (
-              <NavLink
-                key={item.name}
-                to={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )
-                }
-              >
-                <item.icon className="h-5 w-5" />
-                {item.name}
-              </NavLink>
+              <SidebarItem key={item.name} item={item} setSidebarOpen={setSidebarOpen} />
             ))}
           </nav>
 
           {/* Footer */}
-          <div className="border-t border-border p-4">
+          <div className="border-t border-border p-4 space-y-4">
+            <div className="relative">
+              <button 
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex w-full items-center justify-between rounded-lg p-2 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                    {user?.username.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-sm text-left">
+                    <p className="font-medium">{user?.username}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                  </div>
+                </div>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", userMenuOpen && "rotate-180")} />
+              </button>
+
+              {userMenuOpen && (
+                <div className="absolute bottom-full left-0 w-full mb-2 rounded-lg border border-border bg-card shadow-lg overflow-hidden animate-in slide-in-from-bottom-2">
+                  <div className="p-1">
+                    <NavLink 
+                      to="/profile"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setSidebarOpen(false)
+                      }}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    >
+                      <User className="h-4 w-4" />
+                      Profile
+                    </NavLink>
+                    <NavLink 
+                      to="/tokens"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setSidebarOpen(false)
+                      }}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    >
+                      <Key className="h-4 w-4" />
+                      API Tokens
+                    </NavLink>
+                    <div className="my-1 border-t border-border" />
+                    <button
+                      onClick={() => {
+                        logout()
+                        setUserMenuOpen(false)
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-between">
               <StatusIndicator status="online" label="API Online" />
               <button

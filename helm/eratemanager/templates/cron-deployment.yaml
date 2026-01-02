@@ -31,7 +31,7 @@ spec:
             - name: ERATEMANAGER_DB_DRIVER
               value: {{ .Values.db.driver | quote }}
             - name: ERATEMANAGER_DB_DSN
-              value: {{ .Values.db.dsn | quote }}
+              value: {{ include "eratemanager.db.dsn" . | quote }}
             - name: CRON_INTERVAL_SECONDS
               value: "{{ .Values.cronWorker.intervalSeconds }}"
           resources:

@@ -1,69 +1,83 @@
 package migrate
 
 import (
-    "context"
-    "database/sql"
-    "embed"
-    "fmt"
+"context"
+"database/sql"
+"embed"
+"fmt"
 
-    "github.com/pressly/goose/v3"
-    _ "modernc.org/sqlite"
+"github.com/pressly/goose/v3"
+_ "github.com/jackc/pgx/v5/stdlib"
+_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-func configureGoose() {
-    goose.SetBaseFS(embedMigrations)
-    goose.SetTableName("schema_migrations")
-    goose.SetDialect("sqlite3")
+func configureGoose(driver string) error {
+goose.SetBaseFS(embedMigrations)
+goose.SetTableName("schema_migrations")
+
+if driver == "sqlite" || driver == "sqlite3" {
+return goose.SetDialect("sqlite3")
+}
+if driver == "postgres" || driver == "pgx" || driver == "postgrespool" {
+return goose.SetDialect("postgres")
+}
+return fmt.Errorf("unsupported driver for goose: %s", driver)
 }
 
 func openDB(driver, dsn string) (*sql.DB, error) {
-    if driver == "" {
-        driver = "sqlite"
-    }
-    if dsn == "" {
-        dsn = "eratemanager.db"
-    }
-    return sql.Open(driver, dsn)
+if driver == "" {
+driver = "sqlite"
+}
+if dsn == "" {
+dsn = "eratemanager.db"
+}
+
+// Map custom driver names to stdlib drivers
+if driver == "postgrespool" {
+driver = "pgx"
+}
+if driver == "postgres" {
+driver = "pgx"
+}
+
+return sql.Open(driver, dsn)
 }
 
 func Up(ctx context.Context, driver, dsn string) error {
-    configureGoose()
-    db, err := openDB(driver, dsn)
-    if err != nil { return err }
-    defer db.Close()
-    return goose.UpContext(ctx, db, "migrations")
+if err := configureGoose(driver); err != nil {
+return err
+}
+db, err := openDB(driver, dsn)
+if err != nil {
+return err
+}
+defer db.Close()
+return goose.UpContext(ctx, db, "migrations")
 }
 
 func Down(ctx context.Context, driver, dsn string) error {
-    configureGoose()
-    db, err := openDB(driver, dsn)
-    if err != nil { return err }
-    defer db.Close()
-    return goose.DownContext(ctx, db, "migrations")
+if err := configureGoose(driver); err != nil {
+return err
+}
+db, err := openDB(driver, dsn)
+if err != nil {
+return err
+}
+defer db.Close()
+return goose.DownContext(ctx, db, "migrations")
 }
 
 func Status(ctx context.Context, driver, dsn string) error {
-    configureGoose()
-    db, err := openDB(driver, dsn)
-    if err != nil { return err }
-    defer db.Close()
-
-    if err := goose.StatusContext(ctx, db, "migrations"); err != nil {
-        return err
-    }
-    v, err := goose.GetDBVersion(db)
-    if err != nil { return err }
-    fmt.Printf("Current migration version: %d\n", v)
-    return nil
+if err := configureGoose(driver); err != nil {
+return err
 }
-
-func Version(ctx context.Context, driver, dsn string) (int64, error) {
-    configureGoose()
-    db, err := openDB(driver, dsn)
-    if err != nil { return 0, err }
-    defer db.Close()
-    return goose.GetDBVersion(db)
+db, err := openDB(driver, dsn)
+if err != nil {
+return err
+}
+defer db.Close()
+return goose.Status(db, "migrations")
 }

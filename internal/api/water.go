@@ -1,100 +1,78 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/bher20/eratemanager/internal/auth"
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
 )
 
-// WaterService coordinates fetching and caching of water rates.
-type WaterService struct {
-	store storage.Storage // may be nil for direct fetch mode
-}
-
-// NewWaterService creates a water service without storage.
-func NewWaterService() *WaterService {
-	return &WaterService{}
-}
-
-// NewWaterServiceWithStorage creates a water service with storage backend.
-func NewWaterServiceWithStorage(st storage.Storage) *WaterService {
-	return &WaterService{store: st}
-}
-
-// GetWaterRates returns water rates for a provider.
-func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*rates.WaterRatesResponse, error) {
-	parser, ok := rates.GetWaterParser(providerKey)
-	if !ok {
-		return nil, nil // Provider not found
-	}
-
-	// Try cache first if we have storage
-	if s.store != nil {
-		snap, err := s.store.GetRatesSnapshot(ctx, "water:"+providerKey)
-		if err == nil && snap != nil && len(snap.Payload) > 0 {
-			var resp rates.WaterRatesResponse
-			if err := json.Unmarshal(snap.Payload, &resp); err == nil {
-				return &resp, nil
-			}
-		}
-	}
-
-	// Fetch from source
-	provider, _ := rates.GetProvider(providerKey)
-	resp, err := parser.ParseHTML(provider.LandingURL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cache the result
-	if s.store != nil && resp != nil {
-		if payload, err := json.Marshal(resp); err == nil {
-			_ = s.store.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
-				Provider:  "water:" + providerKey,
-				Payload:   payload,
-				FetchedAt: resp.FetchedAt,
-			})
-		}
-	}
-
-	return resp, nil
-}
-
 // RegisterWaterHandlers registers all water-related HTTP handlers.
-func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage) {
-	var waterSvc *WaterService
+func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage, authSvc *auth.Service) {
+	var waterSvc *rates.WaterService
 	if st != nil {
-		waterSvc = NewWaterServiceWithStorage(st)
+		waterSvc = rates.NewWaterServiceWithStorage(st)
 	} else {
-		waterSvc = NewWaterService()
+		waterSvc = rates.NewWaterService()
 	}
 
 	// Water providers list
-	mux.HandleFunc("/rates/water/providers", handleWaterProviders)
+	var providersHandler http.Handler = http.HandlerFunc(handleWaterProviders)
+	if authSvc != nil {
+		providersHandler = authSvc.Middleware(authSvc.RequirePermission("providers", "read", providersHandler))
+	}
+	mux.Handle("/rates/water/providers", providersHandler)
 
 	// Water refresh endpoint (must be registered before rates to match first)
-	mux.HandleFunc("/rates/water/", func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/refresh") {
+			if authSvc != nil {
+				token, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				allowed, err := authSvc.Enforce(token.UserID, "rates", "write")
+				if err != nil {
+					http.Error(w, "Internal Error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+			}
 			handleWaterRefresh(waterSvc)(w, r)
 			return
 		}
 		handleWaterRates(waterSvc)(w, r)
 	})
+
+	var h http.Handler = handler
+	if authSvc != nil {
+		h = authSvc.Middleware(authSvc.RequirePermission("rates", "read", h))
+	}
+	mux.Handle("/rates/water/", h)
 }
 
 // handleWaterProviders returns the list of water providers.
 func handleWaterProviders(w http.ResponseWriter, r *http.Request) {
 	providers := rates.WaterProviders()
 
+	response := struct {
+		Providers []rates.ProviderDescriptor `json:"providers"`
+	}{
+		Providers: providers,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(providers); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("encode water providers failed: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -102,7 +80,7 @@ func handleWaterProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleWaterRates returns a handler for /rates/water/{provider}
-func handleWaterRates(svc *WaterService) http.HandlerFunc {
+func handleWaterRates(svc *rates.WaterService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -149,7 +127,7 @@ func handleWaterRates(svc *WaterService) http.HandlerFunc {
 }
 
 // handleWaterRefresh handles /rates/water/{provider}/refresh
-func handleWaterRefresh(svc *WaterService) http.HandlerFunc {
+func handleWaterRefresh(svc *rates.WaterService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Path: /rates/water/{provider}/refresh
 		path := strings.TrimPrefix(r.URL.Path, "/rates/water/")
@@ -162,29 +140,15 @@ func handleWaterRefresh(svc *WaterService) http.HandlerFunc {
 		}
 
 		// Force refresh by fetching directly from source
-		parser, ok := rates.GetWaterParser(providerKey)
-		if !ok {
-			http.Error(w, "unknown water provider", http.StatusNotFound)
-			return
-		}
-
-		provider, _ := rates.GetProvider(providerKey)
-		resp, err := parser.ParseHTML(provider.LandingURL)
+		resp, err := svc.ForceRefresh(r.Context(), providerKey)
 		if err != nil {
 			log.Printf("refresh water rates for %s failed: %v", providerKey, err)
 			http.Error(w, "refresh failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// Update cache if we have storage
-		if svc.store != nil && resp != nil {
-			if payload, err := json.Marshal(resp); err == nil {
-				_ = svc.store.SaveRatesSnapshot(r.Context(), storage.RatesSnapshot{
-					Provider:  "water:" + providerKey,
-					Payload:   payload,
-					FetchedAt: resp.FetchedAt,
-				})
-			}
+		if resp == nil {
+			http.Error(w, "unknown water provider", http.StatusNotFound)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
