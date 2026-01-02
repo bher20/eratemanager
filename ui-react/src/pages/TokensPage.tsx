@@ -36,7 +36,7 @@ export function TokensPage() {
     try {
       const { token, token_value } = await createToken(newTokenName, role)
       setTokens([...tokens, token])
-      setCreatedTokenValue(token_value)
+      setCreatedTokenValue(token_value ?? null)
       setNewTokenName('')
       setRole('editor')
     } catch (error) {

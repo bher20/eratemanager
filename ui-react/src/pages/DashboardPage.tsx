@@ -208,7 +208,7 @@ export function DashboardPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Refresh Schedule</p>
-                  <p className="font-mono text-sm">{formatInterval(refreshSettings?.interval)}</p>
+                  <p className="font-mono text-sm">{formatInterval(refreshSettings?.interval?.toString())}</p>
                 </div>
               </div>
             </CardContent>

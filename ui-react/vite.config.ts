@@ -28,6 +28,7 @@ export default defineConfig({
       '/water': 'http://localhost:8000',
       '/system': 'http://localhost:8000',
       '/settings': 'http://localhost:8000',
+      '/auth': 'http://localhost:8000',
     },
   },
 })

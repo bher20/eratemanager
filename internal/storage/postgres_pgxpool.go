@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,42 +74,7 @@ func (s *PostgresPoolStorage) UpdateScheduledJob(ctx context.Context, name strin
 }
 
 func (s *PostgresPoolStorage) Migrate(ctx context.Context) error {
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS providers (
-            key TEXT PRIMARY KEY,
-            name TEXT,
-            landing_url TEXT,
-            default_pdf_path TEXT,
-            notes TEXT
-        );`,
-		`CREATE TABLE IF NOT EXISTS rates_snapshots (
-            id SERIAL PRIMARY KEY,
-            provider TEXT NOT NULL,
-            payload BYTEA NOT NULL,
-            fetched_at TIMESTAMPTZ NOT NULL
-        );`,
-		`CREATE TABLE IF NOT EXISTS batch_progress (
-            batch_id TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            status TEXT NOT NULL,
-            started_at TIMESTAMPTZ,
-            completed_at TIMESTAMPTZ,
-            error_message TEXT,
-            retry_count INTEGER DEFAULT 0,
-            PRIMARY KEY (batch_id, provider)
-        );`,
-		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
-		`CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL
-		);`,
-	}
-	for _, stmt := range stmts {
-		if _, err := s.pool.Exec(ctx, stmt); err != nil {
-			return err
-		}
-	}
+	// Migrations are handled by goose in internal/migrate
 	return nil
 }
 
@@ -280,6 +246,9 @@ func (s *PostgresPoolStorage) GetUser(ctx context.Context, id string) (*User, er
 	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
 	var u User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &u, nil
@@ -289,6 +258,9 @@ func (s *PostgresPoolStorage) GetUserByUsername(ctx context.Context, username st
 	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
 	var u User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &u, nil
@@ -338,6 +310,9 @@ func (s *PostgresPoolStorage) GetToken(ctx context.Context, id string) (*Token, 
 	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE id = $1`, id)
 	var t Token
 	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &t, nil
@@ -347,6 +322,9 @@ func (s *PostgresPoolStorage) GetTokenByHash(ctx context.Context, hash string) (
 	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE token_hash = $1`, hash)
 	var t Token
 	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &t, nil

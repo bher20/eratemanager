@@ -1,6 +1,17 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
-import { DashboardPage, ElectricPage, WaterPage, SettingsPage, LoginPage, TokensPage, OnboardingPage } from '@/pages'
+import { 
+  DashboardPage, 
+  ElectricPage, 
+  WaterPage, 
+  GeneralSettingsPage, 
+  UsersPage,
+  RolesPage,
+  PrivilegesPage,
+  LoginPage, 
+  TokensPage, 
+  OnboardingPage 
+} from '@/pages'
 import { AuthProvider } from '@/context/AuthContext'
 import { RequireAuth } from '@/components/RequireAuth'
 import { useEffect, useState } from 'react'
@@ -38,7 +49,7 @@ function App() {
       <Routes>
         <Route 
           path="/onboarding" 
-          element={initialized ? <Navigate to="/login" /> : <OnboardingPage />} 
+          element={initialized ? <Navigate to="/login" /> : <OnboardingPage onComplete={() => setInitialized(true)} />} 
         />
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -53,8 +64,14 @@ function App() {
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/electric" element={<ElectricPage />} />
                     <Route path="/water" element={<WaterPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/tokens" element={<TokensPage />} />
+                    
+                    {/* Settings Routes */}
+                    <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
+                    <Route path="/settings/general" element={<GeneralSettingsPage />} />
+                    <Route path="/settings/users" element={<UsersPage />} />
+                    <Route path="/settings/rbac/roles" element={<RolesPage />} />
+                    <Route path="/settings/rbac/privileges" element={<PrivilegesPage />} />
                   </Routes>
                 </Layout>
               </RequireAuth>

@@ -109,7 +109,7 @@ func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	if authSvc != nil {
-		mux.HandleFunc("/api/auth/status", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/auth/status", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -125,7 +125,7 @@ func NewMux() *http.ServeMux {
 			})
 		})
 
-		mux.HandleFunc("/api/auth/setup", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/auth/setup", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -158,6 +158,7 @@ func NewMux() *http.ServeMux {
 
 			user, err := authSvc.Register(r.Context(), req.Username, req.Password, "admin")
 			if err != nil {
+				log.Printf("Failed to create user: %v", err)
 				http.Error(w, "Failed to create user", http.StatusInternalServerError)
 				return
 			}
@@ -166,7 +167,7 @@ func NewMux() *http.ServeMux {
 			json.NewEncoder(w).Encode(user)
 		})
 
-		mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -200,7 +201,7 @@ func NewMux() *http.ServeMux {
 		})
 
 		// Token management endpoints
-		mux.Handle("/api/auth/tokens", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/auth/tokens", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
 				tokenObj, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
 				if !ok {
@@ -248,12 +249,12 @@ func NewMux() *http.ServeMux {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		})))
 
-		mux.Handle("/api/auth/tokens/", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/auth/tokens/", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodDelete {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			id := strings.TrimPrefix(r.URL.Path, "/api/auth/tokens/")
+			id := strings.TrimPrefix(r.URL.Path, "/auth/tokens/")
 			if id == "" {
 				http.Error(w, "Missing ID", http.StatusBadRequest)
 				return
@@ -281,6 +282,53 @@ func NewMux() *http.ServeMux {
 			}
 			w.WriteHeader(http.StatusOK)
 		})))
+
+		// Users management
+		mux.Handle("/auth/users", authSvc.Middleware(authSvc.RequirePermission("users", "read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			users, err := st.ListUsers(r.Context())
+			if err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			// Redact password hashes
+			for i := range users {
+				users[i].PasswordHash = ""
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(users)
+		}))))
+
+		// Roles
+		mux.Handle("/auth/roles", authSvc.Middleware(authSvc.RequirePermission("roles", "read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return hardcoded roles for now
+			roles := []string{"admin", "editor", "viewer"}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(roles)
+		}))))
+
+		// Privileges (Policies)
+		mux.Handle("/auth/privileges", authSvc.Middleware(authSvc.RequirePermission("privileges", "read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			type Policy struct {
+				Role     string `json:"role"`
+				Resource string `json:"resource"`
+				Action   string `json:"action"`
+			}
+			policies := []Policy{
+				{"admin", "*", "*"},
+				{"editor", "rates", "read"},
+				{"editor", "rates", "write"},
+				{"editor", "providers", "read"},
+				{"editor", "providers", "write"},
+				{"viewer", "rates", "read"},
+				{"viewer", "providers", "read"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(policies)
+		}))))
 	}
 
 	// Metrics endpoint.

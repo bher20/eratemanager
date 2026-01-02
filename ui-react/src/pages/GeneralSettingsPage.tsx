@@ -9,7 +9,7 @@ import {
 import { Moon, Sun, Palette, Info, Clock, Save, Monitor } from 'lucide-react'
 import { getRefreshInterval, setRefreshInterval } from '@/lib/api'
 
-export function SettingsPage() {
+export function GeneralSettingsPage() {
   const [theme, setTheme] = useState<'dark' | 'light' | 'auto'>(() => {
     if (localStorage.getItem('theme') === 'auto') return 'auto'
     return document.documentElement.classList.contains('light') ? 'light' : 'dark'
@@ -44,13 +44,13 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    getRefreshInterval().then(res => setInterval(res.interval)).catch(console.error)
+    getRefreshInterval().then(res => setInterval(res.interval.toString())).catch(console.error)
   }, [])
 
   const handleSaveInterval = async () => {
     setSaving(true)
     try {
-      await setRefreshInterval(interval)
+      await setRefreshInterval(parseInt(interval))
     } catch (err) {
       console.error(err)
       alert('Failed to save interval')

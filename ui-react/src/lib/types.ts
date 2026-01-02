@@ -74,19 +74,39 @@ export interface ApiError {
 }
 
 export interface User {
-  id: string
+  id: number
   username: string
   role: string
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 export interface Token {
   id: string
-  user_id: string
+  user_id?: string
   name: string
   role: string
   created_at: string
   expires_at?: string
   last_used_at?: string
+}
+
+export interface AuthStatus {
+  initialized: boolean
+}
+
+export interface LoginResponse {
+  token: string
+  user: User
+}
+
+export interface TokenResponse {
+  token: Token
+  token_value?: string
+}
+
+export interface Privilege {
+  role: string
+  resource: string
+  action: string
 }

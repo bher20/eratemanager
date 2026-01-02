@@ -4,7 +4,7 @@ import { setupAdmin } from '@/lib/api'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/Card'
 import { Button } from '@/components/Button'
 
-export function OnboardingPage() {
+export function OnboardingPage({ onComplete }: { onComplete?: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -25,6 +25,9 @@ export function OnboardingPage() {
 
     try {
       await setupAdmin(username, password)
+      if (onComplete) {
+        onComplete()
+      }
       // Redirect to login page after successful setup
       navigate('/login', { state: { message: 'Admin account created. Please login.' } })
     } catch (err) {
