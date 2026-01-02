@@ -1,14 +1,27 @@
 # Changelog
 
-<<<<<<< HEAD
-=======
+## 0.1.2
+
+### Patch Changes
+
+- bb895e4: chore: remove unused UI implementations and cleanup repository
+
+  - Remove unused Svelte UI (ui-svelte-vite, ui-sveltekit) and related static files
+  - Remove home_assistant custom component (separate integration)
+  - Remove grafana dashboard configurations (standalone monitoring tool)
+  - Update Containerfile to build only React UI
+  - Clean up \_\_MACOSX artifacts from repository
+
+# <<<<<<< HEAD
+
 ## 0.1.1
 
 ### Patch Changes
 
 - 3a47f0c: feat: add configurable refresh schedule (presets and cron support), system info display, and UX improvements (auto-loading rates, auto theme)
 
->>>>>>> main
+> > > > > > > main
+
 ## 0.1.0
 
 ### Minor Changes
