@@ -15,6 +15,7 @@ import (
 	"context"
 
 	"github.com/bher20/eratemanager/internal/api/swagger"
+	"github.com/bher20/eratemanager/internal/auth"
 	"github.com/bher20/eratemanager/internal/metrics"
 	migrate "github.com/bher20/eratemanager/internal/migrate"
 	"github.com/bher20/eratemanager/internal/rates"
@@ -88,7 +89,199 @@ func NewMux() *http.ServeMux {
 		svc = rates.NewServiceWithStorage(cfg, st)
 	}
 
+	// Initialize Auth Service
+	var authSvc *auth.Service
+	if st != nil {
+		authSvc, err = auth.NewService(st)
+		if err != nil {
+			log.Printf("failed to initialize auth service: %v", err)
+		} else {
+			// Check if users exist, but do NOT create default admin automatically
+			// This allows the UI to detect uninitialized state and prompt for setup
+			ctx := context.Background()
+			users, err := st.ListUsers(ctx)
+			if err == nil && len(users) == 0 {
+				log.Println("No users found. Waiting for initial setup via UI.")
+			}
+		}
+	}
+
 	mux := http.NewServeMux()
+
+	if authSvc != nil {
+		mux.HandleFunc("/api/auth/status", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			users, err := st.ListUsers(r.Context())
+			if err != nil {
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]bool{
+				"initialized": len(users) > 0,
+			})
+		})
+
+		mux.HandleFunc("/api/auth/setup", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			// Check if already initialized
+			users, err := st.ListUsers(r.Context())
+			if err != nil {
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			if len(users) > 0 {
+				http.Error(w, "System already initialized", http.StatusForbidden)
+				return
+			}
+
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+
+			if req.Username == "" || req.Password == "" {
+				http.Error(w, "Username and password required", http.StatusBadRequest)
+				return
+			}
+
+			user, err := authSvc.Register(r.Context(), req.Username, req.Password, "admin")
+			if err != nil {
+				http.Error(w, "Failed to create user", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(user)
+		})
+
+		mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request", http.StatusBadRequest)
+				return
+			}
+			user, err := authSvc.Authenticate(r.Context(), req.Username, req.Password)
+			if err != nil {
+				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
+			expiresAt := time.Now().Add(24 * time.Hour)
+			_, tokenValue, err := authSvc.CreateToken(r.Context(), user.ID, "session", user.Role, &expiresAt)
+			if err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"token": tokenValue,
+				"user":  user,
+			})
+		})
+
+		// Token management endpoints
+		mux.Handle("/api/auth/tokens", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				tokenObj, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				tokens, err := st.ListTokens(r.Context(), tokenObj.UserID)
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(tokens)
+				return
+			}
+			if r.Method == http.MethodPost {
+				var req struct {
+					Name string `json:"name"`
+					Role string `json:"role"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, "Invalid request", http.StatusBadRequest)
+					return
+				}
+
+				tokenObj, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
+				t, val, err := authSvc.CreateToken(r.Context(), tokenObj.UserID, req.Name, req.Role, nil)
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"token":       t,
+					"token_value": val,
+				})
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		})))
+
+		mux.Handle("/api/auth/tokens/", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodDelete {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			id := strings.TrimPrefix(r.URL.Path, "/api/auth/tokens/")
+			if id == "" {
+				http.Error(w, "Missing ID", http.StatusBadRequest)
+				return
+			}
+
+			tokenObj, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			target, err := st.GetToken(r.Context(), id)
+			if err != nil {
+				http.Error(w, "Not found", http.StatusNotFound)
+				return
+			}
+			if target.UserID != tokenObj.UserID {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			if err := st.DeleteToken(r.Context(), id); err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		})))
+	}
 
 	// Metrics endpoint.
 	mux.Handle("/metrics", promhttp.Handler())
@@ -129,12 +322,16 @@ func NewMux() *http.ServeMux {
 	})
 
 	// Rates API - Electric (includes refresh endpoint)
-	mux.HandleFunc("/rates/electric/", handleElectricRates(svc, st))
+	electricHandler := http.Handler(handleElectricRates(svc, st, authSvc))
+	if authSvc != nil {
+		electricHandler = authSvc.Middleware(authSvc.RequirePermission("rates", "read", electricHandler))
+	}
+	mux.Handle("/rates/electric/", electricHandler)
 
-	RegisterProvidersHandler(mux)
+	RegisterProvidersHandler(mux, authSvc)
 
 	// Rates API - Water
-	RegisterWaterHandlers(mux, st)
+	RegisterWaterHandlers(mux, st, authSvc)
 
 	// System Info
 	mux.HandleFunc("/system/info", func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +374,7 @@ func NewMux() *http.ServeMux {
 }
 
 // handleElectricRates returns a handler that serves /rates/electric/{provider}/residential, /rates/electric/{provider}/pdf, and /rates/electric/{provider}/refresh.
-func handleElectricRates(svc *rates.Service, st storage.Storage) http.HandlerFunc {
+func handleElectricRates(svc *rates.Service, st storage.Storage, authSvc *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -195,6 +392,22 @@ func handleElectricRates(svc *rates.Service, st storage.Storage) http.HandlerFun
 
 		// Handle refresh
 		if endpoint == "refresh" {
+			if authSvc != nil {
+				role, ok := r.Context().Value(auth.RoleContextKey).(string)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				allowed, err := authSvc.Enforce(role, "rates", "write")
+				if err != nil {
+					http.Error(w, "Internal Error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+			}
 			handleElectricRefresh(w, r, providerKey, st, start)
 			return
 		}

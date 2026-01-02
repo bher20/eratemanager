@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bher20/eratemanager/internal/auth"
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
@@ -53,7 +54,7 @@ func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*
 		return nil, err
 	}
 
-	// Cache the result
+	// Update cache if we have storage
 	if s.store != nil && resp != nil {
 		if payload, err := json.Marshal(resp); err == nil {
 			_ = s.store.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
@@ -68,7 +69,7 @@ func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*
 }
 
 // RegisterWaterHandlers registers all water-related HTTP handlers.
-func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage) {
+func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage, authSvc *auth.Service) {
 	var waterSvc *WaterService
 	if st != nil {
 		waterSvc = NewWaterServiceWithStorage(st)
@@ -77,16 +78,42 @@ func RegisterWaterHandlers(mux *http.ServeMux, st storage.Storage) {
 	}
 
 	// Water providers list
-	mux.HandleFunc("/rates/water/providers", handleWaterProviders)
+	var providersHandler http.Handler = http.HandlerFunc(handleWaterProviders)
+	if authSvc != nil {
+		providersHandler = authSvc.Middleware(authSvc.RequirePermission("providers", "read", providersHandler))
+	}
+	mux.Handle("/rates/water/providers", providersHandler)
 
 	// Water refresh endpoint (must be registered before rates to match first)
-	mux.HandleFunc("/rates/water/", func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/refresh") {
+			if authSvc != nil {
+				role, ok := r.Context().Value(auth.RoleContextKey).(string)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				allowed, err := authSvc.Enforce(role, "rates", "write")
+				if err != nil {
+					http.Error(w, "Internal Error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+			}
 			handleWaterRefresh(waterSvc)(w, r)
 			return
 		}
 		handleWaterRates(waterSvc)(w, r)
 	})
+
+	var h http.Handler = handler
+	if authSvc != nil {
+		h = authSvc.Middleware(authSvc.RequirePermission("rates", "read", h))
+	}
+	mux.Handle("/rates/water/", h)
 }
 
 // handleWaterProviders returns the list of water providers.

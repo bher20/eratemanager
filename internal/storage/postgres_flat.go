@@ -62,6 +62,25 @@ func (s *PostgresStorage) Migrate(ctx context.Context) error {
 			value TEXT NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			username TEXT UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ,
+			last_used_at TIMESTAMPTZ,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -227,5 +246,131 @@ func (s *PostgresStorage) SetSetting(ctx context.Context, key, value string) err
 		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, key, value, time.Now())
+	return err
+}
+
+// Users
+
+func (s *PostgresStorage) CreateUser(ctx context.Context, user User) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, user.ID, user.Username, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt)
+	return err
+}
+
+func (s *PostgresStorage) GetUser(ctx context.Context, id string) (*User, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
+	var u User
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *PostgresStorage) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
+	var u User
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *PostgresStorage) UpdateUser(ctx context.Context, user User) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE users SET username = $1, password_hash = $2, role = $3, updated_at = $4 WHERE id = $5
+	`, user.Username, user.PasswordHash, user.Role, user.UpdatedAt, user.ID)
+	return err
+}
+
+func (s *PostgresStorage) DeleteUser(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
+}
+
+func (s *PostgresStorage) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// Tokens
+
+func (s *PostgresStorage) CreateToken(ctx context.Context, token Token) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO tokens (id, user_id, name, token_hash, role, created_at, expires_at, last_used_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, token.ID, token.UserID, token.Name, token.TokenHash, token.Role, token.CreatedAt, token.ExpiresAt, token.LastUsedAt)
+	return err
+}
+
+func (s *PostgresStorage) GetToken(ctx context.Context, id string) (*Token, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE id = $1`, id)
+	var t Token
+	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (s *PostgresStorage) GetTokenByHash(ctx context.Context, hash string) (*Token, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE token_hash = $1`, hash)
+	var t Token
+	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (s *PostgresStorage) ListTokens(ctx context.Context, userID string) ([]Token, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Token
+	for rows.Next() {
+		var t Token
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStorage) DeleteToken(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM tokens WHERE id = $1`, id)
+	return err
+}
+
+func (s *PostgresStorage) UpdateTokenLastUsed(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE tokens SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
 	return err
 }

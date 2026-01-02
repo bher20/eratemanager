@@ -17,3 +17,25 @@ type RatesSnapshot struct {
 	Payload   []byte    `json:"payload"`
 	FetchedAt time.Time `json:"fetched_at"`
 }
+
+// User represents a registered user in the system.
+type User struct {
+	ID           string    `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// Token represents an API access token.
+type Token struct {
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	Name       string     `json:"name"`
+	TokenHash  string     `json:"-"`
+	Role       string     `json:"role"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}

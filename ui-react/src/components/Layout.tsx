@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { StatusIndicator } from '@/components'
+import { useAuth } from '@/context/AuthContext'
 import {
   Zap,
   Droplets,
@@ -9,6 +10,8 @@ import {
   Moon,
   Sun,
   Menu,
+  Key,
+  LogOut,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -20,12 +23,14 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Electric Rates', href: '/electric', icon: Zap },
   { name: 'Water Rates', href: '/water', icon: Droplets },
+  { name: 'API Tokens', href: '/tokens', icon: Key },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
 export function Layout({ children }: LayoutProps) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { logout, user } = useAuth()
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
@@ -88,7 +93,26 @@ export function Layout({ children }: LayoutProps) {
           </nav>
 
           {/* Footer */}
-          <div className="border-t border-border p-4">
+          <div className="border-t border-border p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                  {user?.username.charAt(0).toUpperCase()}
+                </div>
+                <div className="text-sm">
+                  <p className="font-medium">{user?.username}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                title="Logout"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+            </div>
+
             <div className="flex items-center justify-between">
               <StatusIndicator status="online" label="API Online" />
               <button

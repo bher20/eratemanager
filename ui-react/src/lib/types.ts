@@ -72,3 +72,21 @@ export interface ApiError {
   message: string
   status?: number
 }
+
+export interface User {
+  id: string
+  username: string
+  role: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Token {
+  id: string
+  user_id: string
+  name: string
+  role: string
+  created_at: string
+  expires_at?: string
+  last_used_at?: string
+}

@@ -25,6 +25,22 @@ type Storage interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
 
+	// Users
+	CreateUser(ctx context.Context, user User) error
+	GetUser(ctx context.Context, id string) (*User, error)
+	GetUserByUsername(ctx context.Context, username string) (*User, error)
+	UpdateUser(ctx context.Context, user User) error
+	DeleteUser(ctx context.Context, id string) error
+	ListUsers(ctx context.Context) ([]User, error)
+
+	// Tokens
+	CreateToken(ctx context.Context, token Token) error
+	GetToken(ctx context.Context, id string) (*Token, error)
+	GetTokenByHash(ctx context.Context, hash string) (*Token, error)
+	ListTokens(ctx context.Context, userID string) ([]Token, error)
+	DeleteToken(ctx context.Context, id string) error
+	UpdateTokenLastUsed(ctx context.Context, id string) error
+
 	// Close releases any resources (no-op for in-memory).
 	Close() error
 
