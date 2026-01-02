@@ -1,5 +1,14 @@
 # Changelog
 
+<<<<<<< HEAD
+=======
+## 0.1.1
+
+### Patch Changes
+
+- 3a47f0c: feat: add configurable refresh schedule (presets and cron support), system info display, and UX improvements (auto-loading rates, auto theme)
+
+>>>>>>> main
 ## 0.1.0
 
 ### Minor Changes

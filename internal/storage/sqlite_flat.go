@@ -59,6 +59,11 @@ func (s *SQLiteStorage) Migrate(ctx context.Context) error {
 			PRIMARY KEY (batch_id, provider)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -219,4 +224,24 @@ func (s *SQLiteStorage) GetPendingBatchProviders(ctx context.Context, batchID st
 		providers = append(providers, p)
 	}
 	return providers, rows.Err()
+}
+
+func (s *SQLiteStorage) GetSetting(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func (s *SQLiteStorage) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+	`, key, value, time.Now().Format(time.RFC3339))
+	return err
 }

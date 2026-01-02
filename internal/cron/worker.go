@@ -12,6 +12,7 @@ import (
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/robfig/cron/v3"
 )
 
 // buildRatesConfigWorker creates a rates.Config with PDF paths from environment
@@ -57,37 +58,84 @@ func Run(ctx context.Context, driver, dsn string) error {
 	// Build rates service with storage so results are cached to the DB.
 	svc := rates.NewServiceWithStorage(buildRatesConfigWorker(), stGeneric)
 
-	// Simple fixed-interval schedule; configurable via env.
-	intervalSec := 300
+	// Initial interval from env or default
+	// Can be integer seconds or cron expression
+	intervalSetting := "300"
 	if raw := os.Getenv("ERATEMANAGER_CRON_INTERVAL_SECONDS"); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
-			intervalSec = v
-		}
+		intervalSetting = raw
 	}
-	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
+
+	// Check DB for override
+	if val, err := stGeneric.GetSetting(ctx, "refresh_interval_seconds"); err == nil && val != "" {
+		intervalSetting = val
+	}
+
+	// Control loop ticker (check config and run time)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+
+	// Helper to calculate next run time
+	getNextRun := func(setting string, lastRun time.Time) time.Time {
+		// Try integer seconds
+		if v, err := strconv.Atoi(setting); err == nil && v > 0 {
+			return lastRun.Add(time.Duration(v) * time.Second)
+		}
+		// Try cron expression
+		if sched, err := cron.ParseStandard(setting); err == nil {
+			return sched.Next(lastRun)
+		}
+		// Fallback to default 5m
+		return lastRun.Add(5 * time.Minute)
+	}
+
+	// If starting fresh, run immediately, then schedule next
+	nextRun := time.Now()
 
 	jobName := "refresh_rates"
 	const lockKey int64 = 42
 
-	log.Printf("cron worker starting, interval=%ds driver=%s", intervalSec, driver)
+	log.Printf("cron worker starting, initial setting=%q driver=%s", intervalSetting, driver)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			// 1. Check for config update
+			if val, err := stGeneric.GetSetting(ctx, "refresh_interval_seconds"); err == nil && val != "" {
+				if val != intervalSetting {
+					log.Printf("cron: interval updated from %q to %q", intervalSetting, val)
+					intervalSetting = val
+					// Recalculate next run based on new setting and current time
+					// If we were waiting for a long interval, we might want to run sooner if new schedule says so.
+					// But simple approach: just calculate next run from NOW.
+					nextRun = getNextRun(intervalSetting, time.Now())
+				}
+			}
+
+			// 2. Check if it's time to run
+			if time.Now().Before(nextRun) {
+				continue
+			}
+
 			started := time.Now()
 
 			ok, err := pg.AcquireAdvisoryLock(ctx, lockKey)
 			if err != nil {
 				log.Printf("cron: acquire advisory lock failed: %v", err)
 				metrics.UpdateJobMetrics(jobName, started, err)
+				// Retry soon? Or wait full interval?
+				// If lock failed (DB error), maybe wait a bit.
+				// If lock held (ok=false), wait full interval?
+				// Original logic just continued loop, which waited for ticker.
+				// Here we need to advance nextRun.
+				nextRun = getNextRun(intervalSetting, time.Now())
 				continue
 			}
 			if !ok {
 				// Another worker is running this job.
 				log.Printf("cron: advisory lock held by another worker, skipping run")
+				nextRun = getNextRun(intervalSetting, time.Now())
 				continue
 			}
 
@@ -128,6 +176,9 @@ func Run(ctx context.Context, driver, dsn string) error {
 			} else {
 				log.Printf("cron: job %s completed successfully (duration=%s)", jobName, dur)
 			}
+
+			// Schedule next run
+			nextRun = getNextRun(intervalSetting, time.Now())
 		}
 	}
 }

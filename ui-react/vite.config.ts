@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+
+const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'))
 
 export default defineConfig({
+  define: {
+    '__APP_VERSION__': JSON.stringify(packageJson.version),
+  },
   plugins: [react()],
   resolve: {
     alias: {
@@ -20,6 +26,8 @@ export default defineConfig({
       '/rates': 'http://localhost:8000',
       '/refresh': 'http://localhost:8000',
       '/water': 'http://localhost:8000',
+      '/system': 'http://localhost:8000',
+      '/settings': 'http://localhost:8000',
     },
   },
 })
