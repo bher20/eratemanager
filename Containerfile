@@ -3,10 +3,10 @@
 ###############################
 FROM docker.io/library/node:20-alpine AS ui-builder
 
-WORKDIR /app/ui-svelte-vite
+WORKDIR /app/ui-react
 
 # Copy entire folder (Buildah-safe)
-COPY ui-svelte-vite/ .
+COPY ui-react/ .
 
 RUN npm install
 RUN npm run build
@@ -25,9 +25,11 @@ RUN go mod download
 
 COPY . .
 
-# Copy the built Svelte UI
-COPY --from=ui-builder /app/ui-svelte-vite/../internal/ui/static/svelte-dist \
-  ./internal/ui/static/svelte-dist
+# Copy the built React UI
+# The vite config outputs to ../internal/ui/static/react-app
+# So in the builder stage, it is at /app/internal/ui/static/react-app
+COPY --from=ui-builder /app/internal/ui/static/react-app \
+  ./internal/ui/static/react-app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
 

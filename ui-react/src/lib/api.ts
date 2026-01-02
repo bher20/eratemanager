@@ -8,6 +8,14 @@ import type {
 
 const API_BASE = ''
 
+export interface SystemInfo {
+  storage: string
+}
+
+export async function getSystemInfo(): Promise<SystemInfo> {
+  return fetchApi<SystemInfo>('/system/info')
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {
     ...options,
@@ -22,7 +30,8 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(errorText || `HTTP ${response.status}`)
   }
 
-  return response.json()
+  const text = await response.text()
+  return text ? JSON.parse(text) : ({} as T)
 }
 
 // Electric Providers
@@ -47,6 +56,18 @@ export async function getWaterProviders(): Promise<WaterProvider[]> {
 
 export async function getWaterRates(providerKey: string): Promise<WaterRatesResponse> {
   return fetchApi<WaterRatesResponse>(`/rates/water/${encodeURIComponent(providerKey)}`)
+}
+
+// Settings
+export async function getRefreshInterval(): Promise<{ interval: string }> {
+  return fetchApi<{ interval: string }>('/settings/refresh-interval')
+}
+
+export async function setRefreshInterval(interval: string): Promise<void> {
+  return fetchApi<void>('/settings/refresh-interval', {
+    method: 'POST',
+    body: JSON.stringify({ interval }),
+  })
 }
 
 export async function refreshWaterProvider(providerKey: string): Promise<RefreshResponse> {
