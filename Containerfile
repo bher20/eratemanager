@@ -5,7 +5,7 @@ FROM docker.io/library/node:20-alpine AS ui-builder
 
 WORKDIR /app/ui-react
 
-# Copy entire folder
+# Copy entire folder (Buildah-safe)
 COPY ui-react/ .
 
 RUN npm install
@@ -24,8 +24,8 @@ RUN go mod download
 COPY . .
 
 # Copy the built React UI
-# The vite build outputs to ../internal/ui/static/react-app relative to ui-react root
-# So in the container it is at /app/internal/ui/static/react-app
+# The Vite build outputs to ../internal/ui/static/react-app (relative to ui-react)
+# In the builder stage this is /app/internal/ui/static/react-app
 COPY --from=ui-builder /app/internal/ui/static/react-app ./internal/ui/static/react-app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager

@@ -13,6 +13,7 @@ type MemoryStorage struct {
 	providers     map[string]Provider
 	snaps         map[string]RatesSnapshot
 	batchProgress map[string]BatchProgress
+	settings      map[string]string
 }
 
 // NewMemory returns a MemoryStorage initialized with default providers.
@@ -21,6 +22,7 @@ func NewMemory() *MemoryStorage {
 		providers:     make(map[string]Provider),
 		snaps:         make(map[string]RatesSnapshot),
 		batchProgress: make(map[string]BatchProgress),
+		settings:      make(map[string]string),
 	}
 	return m
 }
@@ -33,6 +35,7 @@ func NewMemoryWithProviders(list []Provider) *MemoryStorage {
 		providers:     make(map[string]Provider),
 		snaps:         make(map[string]RatesSnapshot),
 		batchProgress: make(map[string]BatchProgress),
+		settings:      make(map[string]string),
 	}
 	for _, p := range list {
 		m.providers[p.Key] = p
@@ -127,4 +130,17 @@ func (m *MemoryStorage) GetPendingBatchProviders(ctx context.Context, batchID st
 		}
 	}
 	return providers, nil
+}
+
+func (m *MemoryStorage) GetSetting(ctx context.Context, key string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.settings[key], nil
+}
+
+func (m *MemoryStorage) SetSetting(ctx context.Context, key, value string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings[key] = value
+	return nil
 }

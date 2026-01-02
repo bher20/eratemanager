@@ -21,6 +21,10 @@ type Storage interface {
 	GetBatchProgress(ctx context.Context, batchID, provider string) (*BatchProgress, error)
 	GetPendingBatchProviders(ctx context.Context, batchID string) ([]string, error)
 
+	// Settings
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+
 	// Close releases any resources (no-op for in-memory).
 	Close() error
 

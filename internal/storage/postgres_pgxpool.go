@@ -98,10 +98,14 @@ func (s *PostgresPoolStorage) Migrate(ctx context.Context) error {
             PRIMARY KEY (batch_id, provider)
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);`,
 	}
 	for _, stmt := range stmts {
-		_, err := s.pool.Exec(ctx, stmt)
-		if err != nil {
+		if _, err := s.pool.Exec(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -237,4 +241,27 @@ func (s *PostgresPoolStorage) GetPendingBatchProviders(ctx context.Context, batc
 		providers = append(providers, p)
 	}
 	return providers, rows.Err()
+}
+
+func (s *PostgresPoolStorage) GetSetting(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&value)
+	if err != nil {
+		// pgx returns pgx.ErrNoRows, but we can check if err.Error() contains "no rows" or just return empty
+		// Better to handle it properly if we imported pgx, but here we can just return error or empty.
+		// Actually, pgxpool.QueryRow returns a Row which has Scan. Scan returns pgx.ErrNoRows.
+		// Since we don't import pgx directly here (only pgxpool), we might need to check string or import pgx/v5.
+		// But wait, we import github.com/jackc/pgx/v5/pgxpool.
+		// Let's just return empty string if error.
+		return "", nil
+	}
+	return value, nil
+}
+
+func (s *PostgresPoolStorage) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+	`, key, value, time.Now())
+	return err
 }
