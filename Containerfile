@@ -11,11 +11,9 @@ COPY ui-react/ .
 RUN npm install
 RUN npm run build
 
-
 ###############################
 # Stage 2: Go Builder
 ###############################
-# IMPORTANT: fully qualify all image names
 FROM docker.io/library/golang:1.24-alpine AS go-builder
 
 WORKDIR /app
@@ -26,13 +24,11 @@ RUN go mod download
 COPY . .
 
 # Copy the built React UI
-# The vite config outputs to ../internal/ui/static/react-app
-# So in the builder stage, it is at /app/internal/ui/static/react-app
-COPY --from=ui-builder /app/internal/ui/static/react-app \
-  ./internal/ui/static/react-app
+# The Vite build outputs to ../internal/ui/static/react-app (relative to ui-react)
+# In the builder stage this is /app/internal/ui/static/react-app
+COPY --from=ui-builder /app/internal/ui/static/react-app ./internal/ui/static/react-app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
-
 
 ###############################
 # Stage 3: Runtime
