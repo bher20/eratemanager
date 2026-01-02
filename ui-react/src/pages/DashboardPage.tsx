@@ -10,7 +10,7 @@ import {
   Badge,
 } from '@/components'
 import { useAsync } from '@/hooks'
-import { getProviders, getWaterProviders } from '@/lib/api'
+import { getProviders, getWaterProviders, getSystemInfo, getRefreshInterval } from '@/lib/api'
 import { Zap, Droplets, ArrowRight, Activity, Server, Database } from 'lucide-react'
 
 export function DashboardPage() {
@@ -23,6 +23,35 @@ export function DashboardPage() {
     () => getWaterProviders(),
     []
   )
+
+  const { data: systemInfo } = useAsync(
+    () => getSystemInfo(),
+    []
+  )
+
+  const { data: refreshSettings } = useAsync(
+    () => getRefreshInterval(),
+    []
+  )
+
+  const formatInterval = (val: string | undefined) => {
+    if (!val) return 'Hourly'
+    
+    // Check if it's a number (seconds)
+    if (/^\d+$/.test(val)) {
+      const s = parseInt(val)
+      if (s === 300) return 'Every 5m'
+      if (s === 900) return 'Every 15m'
+      if (s === 3600) return 'Hourly'
+      if (s === 21600) return 'Every 6h'
+      if (s === 43200) return 'Every 12h'
+      if (s === 86400) return 'Daily'
+      return `${Math.round(s / 60)}m`
+    }
+
+    // It's a cron expression
+    return `Cron: ${val}`
+  }
 
   const loading = loadingElectric || loadingWater
 
@@ -171,19 +200,15 @@ export function DashboardPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Version</p>
-                  <p className="font-mono text-sm">v0.5.x</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">API Endpoint</p>
-                  <p className="font-mono text-sm">/rates, /water</p>
+                  <p className="font-mono text-sm">v{__APP_VERSION__}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Data Storage</p>
-                  <p className="font-mono text-sm">PostgreSQL</p>
+                  <p className="font-mono text-sm">{systemInfo?.storage || 'Loading...'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Refresh Schedule</p>
-                  <p className="font-mono text-sm">Hourly</p>
+                  <p className="font-mono text-sm">{formatInterval(refreshSettings?.interval)}</p>
                 </div>
               </div>
             </CardContent>

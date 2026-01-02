@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
 	"github.com/bher20/eratemanager/internal/ui"
+	"github.com/robfig/cron/v3"
 )
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
@@ -133,6 +135,30 @@ func NewMux() *http.ServeMux {
 
 	// Rates API - Water
 	RegisterWaterHandlers(mux, st)
+
+	// System Info
+	mux.HandleFunc("/system/info", func(w http.ResponseWriter, r *http.Request) {
+		drv := os.Getenv("ERATEMANAGER_DB_DRIVER")
+		if drv == "" {
+			drv = "sqlite"
+		}
+
+		// Format for display
+		displayStorage := "SQLite"
+		if drv == "postgres" {
+			displayStorage = "PostgreSQL"
+		} else if drv != "sqlite" {
+			displayStorage = drv
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"storage": displayStorage,
+		})
+	})
+
+	// Settings API
+	mux.HandleFunc("/settings/refresh-interval", handleRefreshInterval(st))
 
 	// Swagger API documentation
 	mux.Handle("/swagger/", http.StripPrefix("/swagger", swagger.Handler()))
@@ -298,4 +324,47 @@ func handleElectricRefresh(w http.ResponseWriter, r *http.Request, providerKey s
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func handleRefreshInterval(st storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if r.Method == http.MethodGet {
+			val, err := st.GetSetting(ctx, "refresh_interval_seconds")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if val == "" {
+				val = "3600" // Default to 1 hour
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"interval": val})
+			return
+		}
+		if r.Method == http.MethodPost {
+			var req struct {
+				Interval string `json:"interval"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			// Validate integer or cron expression
+			if _, err := strconv.Atoi(req.Interval); err != nil {
+				// Not an integer, check if it's a valid cron expression
+				if _, cronErr := cron.ParseStandard(req.Interval); cronErr != nil {
+					http.Error(w, "invalid interval or cron expression", http.StatusBadRequest)
+					return
+				}
+			}
+			if err := st.SetSetting(ctx, "refresh_interval_seconds", req.Interval); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

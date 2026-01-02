@@ -15,7 +15,7 @@ import {
 import { useAsync, useMutation } from '@/hooks'
 import { getProviders, getResidentialRates, refreshProvider } from '@/lib/api'
 import { formatCurrency, formatRate, formatDate } from '@/lib/utils'
-import { Zap, DollarSign, Calendar, RefreshCw, Download, AlertCircle } from 'lucide-react'
+import { Zap, DollarSign, Calendar, RefreshCw, AlertCircle } from 'lucide-react'
 import type { RatesResponse } from '@/lib/types'
 
 export function ElectricPage() {
@@ -62,16 +62,6 @@ export function ElectricPage() {
     }
   }, [urlProvider, autoLoaded, loadingProviders, providers])
 
-  const handleLoadRates = async () => {
-    if (!selectedProvider) return
-    try {
-      const data = await loadRates(selectedProvider)
-      setRatesData(data)
-    } catch {
-      // Error handled by mutation state
-    }
-  }
-
   const handleRefresh = async () => {
     if (!selectedProvider) return
     try {
@@ -116,7 +106,15 @@ export function ElectricPage() {
                 <Select
                   label="Electric Provider"
                   value={selectedProvider}
-                  onChange={(e) => setSelectedProvider(e.target.value)}
+                  onChange={(e) => {
+                    const provider = e.target.value
+                    setSelectedProvider(provider)
+                    if (provider) {
+                      loadRates(provider).then(setRatesData)
+                    } else {
+                      setRatesData(null)
+                    }
+                  }}
                   options={[
                     { value: '', label: 'Select a provider...' },
                     ...providers.map((p) => ({
@@ -127,14 +125,6 @@ export function ElectricPage() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button
-                  onClick={handleLoadRates}
-                  disabled={!selectedProvider || loadingRates}
-                  loading={loadingRates}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Load Rates
-                </Button>
                 <Button
                   variant="outline"
                   onClick={handleRefresh}

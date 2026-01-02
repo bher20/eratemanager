@@ -13,9 +13,9 @@ import {
   Badge,
 } from '@/components'
 import { useAsync, useMutation } from '@/hooks'
-import { getWaterProviders, getWaterRates } from '@/lib/api'
+import { getWaterProviders, getWaterRates, refreshProvider } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Droplets, DollarSign, Calendar, Download, AlertCircle, Waves } from 'lucide-react'
+import { Droplets, DollarSign, Calendar, AlertCircle, Waves, RefreshCw } from 'lucide-react'
 import type { WaterRatesResponse } from '@/lib/types'
 
 export function WaterPage() {
@@ -37,6 +37,11 @@ export function WaterPage() {
     error: ratesError,
   } = useMutation(getWaterRates)
 
+  const {
+    mutate: doRefresh,
+    loading: refreshing,
+  } = useMutation(refreshProvider)
+
   const providersList = providers || []
 
   // Auto-load rates if provider is specified in URL
@@ -55,9 +60,11 @@ export function WaterPage() {
     }
   }, [urlProvider, autoLoaded, loadingProviders, providersList])
 
-  const handleLoadRates = async () => {
+  const handleRefresh = async () => {
     if (!selectedProvider) return
     try {
+      await doRefresh(selectedProvider)
+      // Reload rates after refresh
       const data = await loadRates(selectedProvider)
       setRatesData(data)
     } catch {
@@ -110,7 +117,15 @@ export function WaterPage() {
                 <Select
                   label="Water Provider"
                   value={selectedProvider}
-                  onChange={(e) => setSelectedProvider(e.target.value)}
+                  onChange={(e) => {
+                    const provider = e.target.value
+                    setSelectedProvider(provider)
+                    if (provider) {
+                      loadRates(provider).then(setRatesData)
+                    } else {
+                      setRatesData(null)
+                    }
+                  }}
                   options={[
                     { value: '', label: 'Select a provider...' },
                     ...providersList.map((p) => ({
@@ -121,12 +136,13 @@ export function WaterPage() {
                 />
               </div>
               <Button
-                onClick={handleLoadRates}
-                disabled={!selectedProvider || loadingRates}
-                loading={loadingRates}
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={!selectedProvider || refreshing}
+                loading={refreshing}
               >
-                <Download className="mr-2 h-4 w-4" />
-                Load Rates
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
               </Button>
             </div>
           )}
