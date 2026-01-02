@@ -3,19 +3,17 @@
 ###############################
 FROM docker.io/library/node:20-alpine AS ui-builder
 
-WORKDIR /app/ui-svelte-vite
+WORKDIR /app/ui-react
 
-# Copy entire folder (Buildah-safe)
-COPY ui-svelte-vite/ .
+# Copy entire folder
+COPY ui-react/ .
 
 RUN npm install
 RUN npm run build
 
-
 ###############################
 # Stage 2: Go Builder
 ###############################
-# IMPORTANT: fully qualify all image names
 FROM docker.io/library/golang:1.24-alpine AS go-builder
 
 WORKDIR /app
@@ -25,12 +23,12 @@ RUN go mod download
 
 COPY . .
 
-# Copy the built Svelte UI
-COPY --from=ui-builder /app/ui-svelte-vite/../internal/ui/static/svelte-dist \
-  ./internal/ui/static/svelte-dist
+# Copy the built React UI
+# The vite build outputs to ../internal/ui/static/react-app relative to ui-react root
+# So in the container it is at /app/internal/ui/static/react-app
+COPY --from=ui-builder /app/internal/ui/static/react-app ./internal/ui/static/react-app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
-
 
 ###############################
 # Stage 3: Runtime
