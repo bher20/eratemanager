@@ -10,7 +10,8 @@ import {
   PrivilegesPage,
   LoginPage, 
   TokensPage, 
-  OnboardingPage 
+  OnboardingPage,
+  ProfilePage
 } from '@/pages'
 import { AuthProvider } from '@/context/AuthContext'
 import { RequireAuth } from '@/components/RequireAuth'
@@ -64,6 +65,7 @@ function App() {
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/electric" element={<ElectricPage />} />
                     <Route path="/water" element={<WaterPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/tokens" element={<TokensPage />} />
                     
                     {/* Settings Routes */}

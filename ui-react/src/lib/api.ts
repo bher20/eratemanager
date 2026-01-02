@@ -50,7 +50,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
-  return fetchApi<ProvidersResponse>('/rates/providers')
+  return fetchApi<ProvidersResponse>('/providers')
 }
 
 export async function getRates(provider: string): Promise<RatesResponse> {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/bher20/eratemanager/internal/storage"
 )
 
 type contextKey string
@@ -44,13 +46,13 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 
 func (s *Service) RequirePermission(obj, act string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role, ok := r.Context().Value(RoleContextKey).(string)
+		token, ok := r.Context().Value(TokenContextKey).(*storage.Token)
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		allowed, err := s.Enforce(role, obj, act)
+		allowed, err := s.Enforce(token.UserID, obj, act)
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return

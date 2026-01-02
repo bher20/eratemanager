@@ -10,12 +10,14 @@ import (
 
 func RegisterProvidersHandler(mux *http.ServeMux, authSvc *auth.Service) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// log.Printf("Providers handler called: %s %s", r.Method, r.URL.Path)
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		providers := rates.Providers()
+		// log.Printf("Returning %d providers", len(providers))
 
 		response := struct {
 			Providers []rates.ProviderDescriptor `json:"providers"`

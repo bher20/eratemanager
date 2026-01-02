@@ -441,12 +441,12 @@ func handleElectricRates(svc *rates.Service, st storage.Storage, authSvc *auth.S
 		// Handle refresh
 		if endpoint == "refresh" {
 			if authSvc != nil {
-				role, ok := r.Context().Value(auth.RoleContextKey).(string)
+				token, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
 				if !ok {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
-				allowed, err := authSvc.Enforce(role, "rates", "write")
+				allowed, err := authSvc.Enforce(token.UserID, "rates", "write")
 				if err != nil {
 					http.Error(w, "Internal Error", http.StatusInternalServerError)
 					return

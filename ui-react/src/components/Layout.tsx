@@ -35,7 +35,6 @@ const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Electric Rates', href: '/electric', icon: Zap },
   { name: 'Water Rates', href: '/water', icon: Droplets },
-  { name: 'API Tokens', href: '/tokens', icon: Key },
   { 
     name: 'Settings', 
     icon: Settings,
@@ -126,6 +125,7 @@ const SidebarItem = ({ item, depth = 0, setSidebarOpen }: { item: NavItem, depth
 export function Layout({ children }: LayoutProps) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { logout, user } = useAuth()
 
   useEffect(() => {
@@ -175,23 +175,62 @@ export function Layout({ children }: LayoutProps) {
 
           {/* Footer */}
           <div className="border-t border-border p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
-                  {user?.username.charAt(0).toUpperCase()}
-                </div>
-                <div className="text-sm">
-                  <p className="font-medium">{user?.username}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
-                </div>
-              </div>
-              <button
-                onClick={logout}
-                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                title="Logout"
+            <div className="relative">
+              <button 
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex w-full items-center justify-between rounded-lg p-2 hover:bg-muted transition-colors"
               >
-                <LogOut className="h-5 w-5" />
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
+                    {user?.username.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-sm text-left">
+                    <p className="font-medium">{user?.username}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                  </div>
+                </div>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", userMenuOpen && "rotate-180")} />
               </button>
+
+              {userMenuOpen && (
+                <div className="absolute bottom-full left-0 w-full mb-2 rounded-lg border border-border bg-card shadow-lg overflow-hidden animate-in slide-in-from-bottom-2">
+                  <div className="p-1">
+                    <NavLink 
+                      to="/profile"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setSidebarOpen(false)
+                      }}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    >
+                      <User className="h-4 w-4" />
+                      Profile
+                    </NavLink>
+                    <NavLink 
+                      to="/tokens"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setSidebarOpen(false)
+                      }}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                    >
+                      <Key className="h-4 w-4" />
+                      API Tokens
+                    </NavLink>
+                    <div className="my-1 border-t border-border" />
+                    <button
+                      onClick={() => {
+                        logout()
+                        setUserMenuOpen(false)
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between">

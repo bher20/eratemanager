@@ -58,6 +58,18 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 	e.AddPolicy("viewer", "rates", "read")
 	e.AddPolicy("viewer", "providers", "read")
 
+	// Load existing users and add their roles
+	ctx := context.Background()
+	users, err := s.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		if u.Role != "" {
+			e.AddGroupingPolicy(u.ID, u.Role)
+		}
+	}
+
 	return &Service{storage: s, enforcer: e}, nil
 }
 
