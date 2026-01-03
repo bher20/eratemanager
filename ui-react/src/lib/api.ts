@@ -54,7 +54,7 @@ export async function getProviders(): Promise<ProvidersResponse> {
 }
 
 export async function getRates(provider: string): Promise<RatesResponse> {
-  return fetchApi<RatesResponse>(`/rates/electric/${provider}`)
+  return fetchApi<RatesResponse>(`/rates/electric/${provider}/residential`)
 }
 export const getResidentialRates = getRates
 
@@ -73,6 +73,10 @@ export async function refreshRates(provider: string, type: 'electric' | 'water' 
   })
 }
 export const refreshProvider = refreshRates
+
+export async function refreshWaterProvider(provider: string): Promise<RefreshResponse> {
+  return refreshRates(provider, 'water')
+}
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   const response = await fetchApi<LoginResponse>('/auth/login', {
@@ -99,10 +103,10 @@ export async function getTokens(): Promise<Token[]> {
   return fetchApi<Token[]>('/auth/tokens')
 }
 
-export async function createToken(name: string, role: string): Promise<TokenResponse> {
+export async function createToken(name: string, role: string, expiresIn?: string): Promise<TokenResponse> {
   return fetchApi<TokenResponse>('/auth/tokens', {
     method: 'POST',
-    body: JSON.stringify({ name, role }),
+    body: JSON.stringify({ name, role, expires_in: expiresIn || 'never' }),
   })
 }
 

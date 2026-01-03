@@ -267,3 +267,19 @@ func (m *MemoryStorage) UpdateTokenLastUsed(ctx context.Context, id string) erro
 	}
 	return nil
 }
+
+func (m *MemoryStorage) LoadCasbinRules(ctx context.Context) ([]CasbinRule, error) {
+	// In-memory storage doesn't persist rules, so we return empty.
+	// The Enforcer will start with default policies.
+	return nil, nil
+}
+
+func (m *MemoryStorage) AddCasbinRule(ctx context.Context, rule CasbinRule) error {
+	// No-op for memory storage as Casbin handles in-memory state itself
+	return nil
+}
+
+func (m *MemoryStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) error {
+	// No-op
+	return nil
+}

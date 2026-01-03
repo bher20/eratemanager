@@ -186,6 +186,16 @@ func NewMux() *http.ServeMux {
 				return
 			}
 
+			// Clean up expired session tokens for this user to prevent accumulation
+			if existingTokens, err := st.ListTokens(r.Context(), user.ID); err == nil {
+				now := time.Now()
+				for _, token := range existingTokens {
+					if token.Name == "session" && token.ExpiresAt != nil && token.ExpiresAt.Before(now) {
+						st.DeleteToken(r.Context(), token.ID)
+					}
+				}
+			}
+
 			expiresAt := time.Now().Add(24 * time.Hour)
 			_, tokenValue, err := authSvc.CreateToken(r.Context(), user.ID, "session", user.Role, &expiresAt)
 			if err != nil {
@@ -219,8 +229,9 @@ func NewMux() *http.ServeMux {
 			}
 			if r.Method == http.MethodPost {
 				var req struct {
-					Name string `json:"name"`
-					Role string `json:"role"`
+					Name      string `json:"name"`
+					Role      string `json:"role"`
+					ExpiresIn string `json:"expires_in"` // e.g., "30d", "never", "24h"
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -233,7 +244,14 @@ func NewMux() *http.ServeMux {
 					return
 				}
 
-				t, val, err := authSvc.CreateToken(r.Context(), tokenObj.UserID, req.Name, req.Role, nil)
+				// Parse expiration duration (supports both relative durations and custom dates)
+				expiresAt, err := auth.ParseExpirationDuration(req.ExpiresIn)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Invalid expires_in: %v", err), http.StatusBadRequest)
+					return
+				}
+
+				t, val, err := authSvc.CreateToken(r.Context(), tokenObj.UserID, req.Name, req.Role, expiresAt)
 				if err != nil {
 					http.Error(w, "Internal error", http.StatusInternalServerError)
 					return
@@ -303,68 +321,68 @@ func NewMux() *http.ServeMux {
 		}))))
 
 		// Roles
-mux.Handle("/auth/roles", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-role, ok := r.Context().Value(auth.RoleContextKey).(string)
-if !ok {
-http.Error(w, "Unauthorized", http.StatusUnauthorized)
-return
-}
+		mux.Handle("/auth/roles", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role, ok := r.Context().Value(auth.RoleContextKey).(string)
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-if r.Method == http.MethodGet {
-allowed, err := authSvc.Enforce(role, "roles", "read")
-if err != nil {
-http.Error(w, "Internal error", http.StatusInternalServerError)
-return
-}
-if !allowed {
-http.Error(w, "Forbidden", http.StatusForbidden)
-return
-}
+			if r.Method == http.MethodGet {
+				allowed, err := authSvc.Enforce(role, "roles", "read")
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
 
-roles, err := authSvc.GetAllRoles()
-if err != nil {
-http.Error(w, "Internal error", http.StatusInternalServerError)
-return
-}
-w.Header().Set("Content-Type", "application/json")
-json.NewEncoder(w).Encode(roles)
-return
-}
+				roles, err := authSvc.GetAllRoles()
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(roles)
+				return
+			}
 
-if r.Method == http.MethodPost {
-allowed, err := authSvc.Enforce(role, "roles", "write")
-if err != nil {
-http.Error(w, "Internal error", http.StatusInternalServerError)
-return
-}
-if !allowed {
-http.Error(w, "Forbidden", http.StatusForbidden)
-return
-}
+			if r.Method == http.MethodPost {
+				allowed, err := authSvc.Enforce(role, "roles", "write")
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
 
-var req struct {
-Role     string        `json:"role"`
-Policies []auth.Policy `json:"policies"`
-}
-if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-http.Error(w, "Invalid request", http.StatusBadRequest)
-return
-}
-if req.Role == "" {
-http.Error(w, "Role name required", http.StatusBadRequest)
-return
-}
-if _, err := authSvc.CreateRole(req.Role, req.Policies); err != nil {
-http.Error(w, "Failed to create role", http.StatusInternalServerError)
-return
-}
-w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(http.StatusCreated)
-json.NewEncoder(w).Encode(map[string]bool{"success": true})
-return
-}
-http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-})))
+				var req struct {
+					Role     string        `json:"role"`
+					Policies []auth.Policy `json:"policies"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, "Invalid request", http.StatusBadRequest)
+					return
+				}
+				if req.Role == "" {
+					http.Error(w, "Role name required", http.StatusBadRequest)
+					return
+				}
+				if _, err := authSvc.CreateRole(req.Role, req.Policies); err != nil {
+					http.Error(w, "Failed to create role", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]bool{"success": true})
+				return
+			}
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		})))
 
 		// Privileges (Policies)
 		mux.Handle("/auth/privileges", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -396,7 +414,7 @@ http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 					Resource string `json:"resource"`
 					Action   string `json:"action"`
 				}
-				
+
 				var policies []Policy
 				for _, p := range rawPolicies {
 					if len(p) >= 3 {
@@ -438,7 +456,7 @@ http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 					http.Error(w, "Failed to add policy", http.StatusInternalServerError)
 					return
 				}
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]bool{"success": true})
@@ -470,7 +488,7 @@ http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 					http.Error(w, "Failed to remove policy", http.StatusInternalServerError)
 					return
 				}
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]bool{"success": true})
 				return
@@ -658,8 +676,37 @@ func handleElectricRates(svc *rates.Service, st storage.Storage, authSvc *auth.S
 		resp, err := svc.GetResidential(r.Context(), providerKey)
 		if err != nil {
 			log.Printf("get residential rates for %s failed: %v", providerKey, err)
+			errMsg := err.Error()
+
+			// Check for specific error types and return appropriate status codes
+			if strings.Contains(errMsg, "PDF not found") || strings.Contains(errMsg, "no such file") {
+				metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "404").Inc()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error":   "rates_not_available",
+					"message": fmt.Sprintf("Rate data for %s is not yet available. Please click 'Refresh Rates' to fetch the latest data.", providerKey),
+				})
+				return
+			}
+			if strings.Contains(errMsg, "unknown provider") || strings.Contains(errMsg, "no parser registered") {
+				metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "404").Inc()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error":   "provider_not_found",
+					"message": fmt.Sprintf("Provider '%s' is not configured.", providerKey),
+				})
+				return
+			}
+
 			metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "500").Inc()
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error":   "internal_error",
+				"message": "An unexpected error occurred while fetching rates.",
+			})
 			return
 		}
 

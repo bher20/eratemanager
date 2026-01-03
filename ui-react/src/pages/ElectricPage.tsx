@@ -143,11 +143,26 @@ export function ElectricPage() {
       {/* Error State */}
       {ratesError && (
         <Card className="border-destructive/50 bg-destructive/5">
-          <CardContent className="flex items-center gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-destructive" />
-            <p className="text-sm text-destructive">
-              Failed to load rates: {ratesError.message}
-            </p>
+          <CardContent className="flex flex-col gap-3 py-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <p className="text-sm text-destructive">
+                {ratesError.message}
+              </p>
+            </div>
+            {ratesError.message.includes('not yet available') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={!selectedProvider || refreshing}
+                loading={refreshing}
+                className="w-fit"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh Rates
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

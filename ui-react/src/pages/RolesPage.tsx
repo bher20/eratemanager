@@ -55,8 +55,14 @@ export function RolesPage() {
   const handleAddRole = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    // Include any pending policy in the inputs
+    const policiesToSubmit = [...newRolePolicies]
+    if (newRolePolicy.resource && newRolePolicy.action) {
+      policiesToSubmit.push(newRolePolicy)
+    }
+
     try {
-      await createRole(newRole, newRolePolicies)
+      await createRole(newRole, policiesToSubmit)
       setIsAddRoleOpen(false)
       setNewRole('')
       setNewRolePolicies([])
@@ -254,8 +260,8 @@ export function RolesPage() {
                         list="new-role-resource-list"
                         value={newRolePolicy.resource}
                         onChange={(e) => setNewRolePolicy({ ...newRolePolicy, resource: e.target.value })}
-                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Resource"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        placeholder="Select or type resource..."
                       />
                       <datalist id="new-role-resource-list">
                         {KNOWN_RESOURCES.map((res) => (
@@ -267,7 +273,7 @@ export function RolesPage() {
                       <select
                         value={newRolePolicy.action}
                         onChange={(e) => setNewRolePolicy({ ...newRolePolicy, action: e.target.value })}
-                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <option value="">Action</option>
                         <option value="read">read</option>

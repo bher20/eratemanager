@@ -43,7 +43,7 @@ echo "✅ Image pushed successfully"
 echo ""
 
 # Step 3: Update deployment
-echo "[3/4] Updating Kubernetes deployment..."
+echo "[3/5] Updating Kubernetes deployment..."
 kubectl set image deployment/${DEPLOYMENT_NAME} \
     ${DEPLOYMENT_NAME}="${FULL_IMAGE}" \
     -n ${NAMESPACE}
@@ -54,8 +54,18 @@ fi
 echo "✅ Deployment updated"
 echo ""
 
-# Step 4: Wait for rollout
-echo "[4/4] Waiting for rollout to complete..."
+# Step 4: Force rollout (even if image tag is unchanged)
+echo "[4/5] Forcing rollout restart..."
+kubectl rollout restart deployment/${DEPLOYMENT_NAME} -n ${NAMESPACE}
+if [ $? -ne 0 ]; then
+    echo "❌ Rollout restart failed"
+    exit 1
+fi
+echo "✅ Rollout restart triggered"
+echo ""
+
+# Step 5: Wait for rollout
+echo "[5/5] Waiting for rollout to complete..."
 kubectl rollout status deployment/${DEPLOYMENT_NAME} \
     -n ${NAMESPACE} \
     --timeout=5m

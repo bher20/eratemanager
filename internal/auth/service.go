@@ -179,46 +179,45 @@ func (s *Service) LoadPolicy() error {
 }
 
 func (s *Service) GetAllRoles() ([]string, error) {
-return s.enforcer.GetAllRoles()
+	return s.enforcer.GetAllSubjects()
 }
 
 func (s *Service) GetAllPolicies() ([][]string, error) {
-return s.enforcer.GetPolicy()
+	return s.enforcer.GetPolicy()
 }
 
 func (s *Service) AddPolicy(role, resource, action string) (bool, error) {
-return s.enforcer.AddPolicy(role, resource, action)
+	return s.enforcer.AddPolicy(role, resource, action)
 }
 
 func (s *Service) RemovePolicy(role, resource, action string) (bool, error) {
-return s.enforcer.RemovePolicy(role, resource, action)
+	return s.enforcer.RemovePolicy(role, resource, action)
 }
 
 func (s *Service) AddGroupingPolicy(user, role string) (bool, error) {
-return s.enforcer.AddGroupingPolicy(user, role)
+	return s.enforcer.AddGroupingPolicy(user, role)
 }
 
 func (s *Service) RemoveGroupingPolicy(user, role string) (bool, error) {
-return s.enforcer.RemoveGroupingPolicy(user, role)
+	return s.enforcer.RemoveGroupingPolicy(user, role)
 }
 
-
 type Policy struct {
-Resource string `json:"resource"`
-Action   string `json:"action"`
+	Resource string `json:"resource"`
+	Action   string `json:"action"`
 }
 
 func (s *Service) CreateRole(role string, policies []Policy) (bool, error) {
-// If no policies provided, add a default one to ensure role exists
-if len(policies) == 0 {
-return s.enforcer.AddPolicy(role, "system", "init")
-}
+	// If no policies provided, add a default one to ensure role exists
+	if len(policies) == 0 {
+		return s.enforcer.AddPolicy(role, "system", "init")
+	}
 
-// Add all policies
-for _, p := range policies {
-if _, err := s.enforcer.AddPolicy(role, p.Resource, p.Action); err != nil {
-return false, err
-}
-}
-return true, nil
+	// Add all policies
+	for _, p := range policies {
+		if _, err := s.enforcer.AddPolicy(role, p.Resource, p.Action); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }

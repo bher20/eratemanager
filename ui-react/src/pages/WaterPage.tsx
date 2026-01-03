@@ -13,7 +13,7 @@ import {
   Badge,
 } from '@/components'
 import { useAsync, useMutation } from '@/hooks'
-import { getWaterProviders, getWaterRates, refreshProvider } from '@/lib/api'
+import { getWaterProviders, getWaterRates, refreshWaterProvider } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Droplets, DollarSign, Calendar, AlertCircle, Waves, RefreshCw } from 'lucide-react'
 import type { WaterRatesResponse } from '@/lib/types'
@@ -40,7 +40,7 @@ export function WaterPage() {
   const {
     mutate: doRefresh,
     loading: refreshing,
-  } = useMutation(refreshProvider)
+  } = useMutation(refreshWaterProvider)
 
   const providersList = providers || []
 
