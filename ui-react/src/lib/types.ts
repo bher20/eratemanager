@@ -74,16 +74,16 @@ export interface ApiError {
 }
 
 export interface User {
-  id: number
+  id: string
   username: string
   role: string
   created_at: string
-  updated_at?: string
+  updated_at: string
 }
 
 export interface Token {
   id: string
-  user_id?: string
+  user_id: string
   name: string
   role: string
   created_at: string
@@ -91,8 +91,17 @@ export interface Token {
   last_used_at?: string
 }
 
+export interface Privilege {
+  role: string
+  resource: string
+  action: string
+}
+
 export interface AuthStatus {
   initialized: boolean
+  authenticated?: boolean
+  user?: User
+  role?: string
 }
 
 export interface LoginResponse {
@@ -102,11 +111,6 @@ export interface LoginResponse {
 
 export interface TokenResponse {
   token: Token
+  access_token?: string
   token_value?: string
-}
-
-export interface Privilege {
-  role: string
-  resource: string
-  action: string
 }

@@ -134,3 +134,39 @@ export async function setRefreshInterval(interval: number): Promise<void> {
     body: JSON.stringify({ interval }),
   })
 }
+
+export async function createUser(username: string, password: string, role: string): Promise<User> {
+  return fetchApi<User>('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role }),
+  })
+}
+
+export async function updateUser(id: string, role: string): Promise<User> {
+  return fetchApi<User>(`/auth/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+}
+
+export async function addPolicy(role: string, resource: string, action: string): Promise<void> {
+  await fetchApi('/auth/privileges', {
+    method: 'POST',
+    body: JSON.stringify({ role, resource, action }),
+  })
+}
+
+export async function removePolicy(role: string, resource: string, action: string): Promise<void> {
+  await fetchApi('/auth/privileges', {
+    method: 'DELETE',
+    body: JSON.stringify({ role, resource, action }),
+  })
+}
+
+
+export async function createRole(role: string, policies: { resource: string; action: string }[] = []): Promise<void> {
+  await fetchApi('/auth/roles', {
+    method: 'POST',
+    body: JSON.stringify({ role, policies }),
+  })
+}
