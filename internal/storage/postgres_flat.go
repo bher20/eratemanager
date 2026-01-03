@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -80,6 +81,16 @@ func (s *PostgresStorage) Migrate(ctx context.Context) error {
 			expires_at TIMESTAMPTZ,
 			last_used_at TIMESTAMPTZ,
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS casbin_rules (
+			id SERIAL PRIMARY KEY,
+			ptype TEXT NOT NULL,
+			v0 TEXT,
+			v1 TEXT,
+			v2 TEXT,
+			v3 TEXT,
+			v4 TEXT,
+			v5 TEXT
 		);`,
 	}
 	for _, stmt := range stmts {
@@ -372,5 +383,76 @@ func (s *PostgresStorage) DeleteToken(ctx context.Context, id string) error {
 
 func (s *PostgresStorage) UpdateTokenLastUsed(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE tokens SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
+	return err
+}
+
+func (s *PostgresStorage) LoadCasbinRules(ctx context.Context) ([]CasbinRule, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT ptype, v0, v1, v2, v3, v4, v5 FROM casbin_rules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CasbinRule
+	for rows.Next() {
+		var r CasbinRule
+		var v0, v1, v2, v3, v4, v5 sql.NullString
+		if err := rows.Scan(&r.PType, &v0, &v1, &v2, &v3, &v4, &v5); err != nil {
+			return nil, err
+		}
+		r.V0 = v0.String
+		r.V1 = v1.String
+		r.V2 = v2.String
+		r.V3 = v3.String
+		r.V4 = v4.String
+		r.V5 = v5.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresStorage) AddCasbinRule(ctx context.Context, rule CasbinRule) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO casbin_rules (ptype, v0, v1, v2, v3, v4, v5) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5)
+	return err
+}
+
+func (s *PostgresStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) error {
+	query := "DELETE FROM casbin_rules WHERE ptype = $1"
+	args := []interface{}{rule.PType}
+	idx := 2
+
+	if rule.V0 != "" {
+		query += " AND v0 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V0)
+		idx++
+	}
+	if rule.V1 != "" {
+		query += " AND v1 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V1)
+		idx++
+	}
+	if rule.V2 != "" {
+		query += " AND v2 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V2)
+		idx++
+	}
+	if rule.V3 != "" {
+		query += " AND v3 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V3)
+		idx++
+	}
+	if rule.V4 != "" {
+		query += " AND v4 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V4)
+		idx++
+	}
+	if rule.V5 != "" {
+		query += " AND v5 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V5)
+		idx++
+	}
+
+	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
 }

@@ -1,0 +1,16 @@
+node_modules
+.git
+*.log
+*.md
+!README.md
+.env
+.env.*
+dist
+build
+coverage
+.vscode
+.idea
+*.test
+*.out
+bin/
+!bin/eratemanager

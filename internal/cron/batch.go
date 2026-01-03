@@ -550,3 +550,270 @@ func ForceRefreshProvider(ctx context.Context, st storage.Storage, provider stri
 
 	return resp, nil
 }
+
+// StartupRefreshConfig controls startup refresh behavior.
+type StartupRefreshConfig struct {
+	// Enabled controls whether startup refresh runs
+	Enabled bool
+	// CacheTTL is how long cached rates are considered fresh (skip refresh)
+	CacheTTL time.Duration
+	// ProviderTimeout is the max time for a single provider refresh
+	ProviderTimeout time.Duration
+	// NumWorkers is the number of concurrent worker goroutines
+	NumWorkers int
+	// UseLeaderElection enables advisory lock-based leader election (PostgreSQL only)
+	UseLeaderElection bool
+	// LeaderLockTimeout is how long to wait to acquire the leader lock
+	LeaderLockTimeout time.Duration
+}
+
+// DefaultStartupRefreshConfig returns the default configuration for startup refresh.
+func DefaultStartupRefreshConfig() StartupRefreshConfig {
+	cfg := StartupRefreshConfig{
+		Enabled:           true,
+		CacheTTL:          24 * time.Hour,
+		ProviderTimeout:   60 * time.Second,
+		NumWorkers:        2,
+		UseLeaderElection: true,
+		LeaderLockTimeout: 5 * time.Second,
+	}
+
+	// Check environment variables for overrides
+	if v := os.Getenv("STARTUP_REFRESH_ENABLED"); v != "" {
+		cfg.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("STARTUP_REFRESH_CACHE_TTL_HOURS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.CacheTTL = time.Duration(n) * time.Hour
+		}
+	}
+	if v := os.Getenv("STARTUP_REFRESH_TIMEOUT_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.ProviderTimeout = time.Duration(n) * time.Second
+		}
+	}
+	if v := os.Getenv("STARTUP_REFRESH_WORKERS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.NumWorkers = n
+		}
+	}
+	if v := os.Getenv("STARTUP_REFRESH_LEADER_ELECTION"); v != "" {
+		cfg.UseLeaderElection = v == "true" || v == "1"
+	}
+
+	return cfg
+}
+
+// AdvisoryLocker is an optional interface for storage backends that support advisory locks.
+// PostgreSQL supports this for distributed leader election.
+type AdvisoryLocker interface {
+	AcquireAdvisoryLock(ctx context.Context, key int64) (bool, error)
+	ReleaseAdvisoryLock(ctx context.Context, key int64) (bool, error)
+}
+
+// Advisory lock key for startup refresh leader election
+const startupRefreshLockKey int64 = 13371338
+
+// RunStartupRefresh runs a background refresh of missing or expired provider data.
+// This is designed to be called asynchronously on server startup.
+//
+// Features:
+// - Worker pool: Configurable number of concurrent workers process providers
+// - Leader election: Only one replica runs refresh (PostgreSQL advisory locks)
+// - Non-blocking: Never holds up application startup
+// - Graceful: Handles context cancellation and timeouts
+func RunStartupRefresh(ctx context.Context, st storage.Storage) {
+	cfg := DefaultStartupRefreshConfig()
+
+	if !cfg.Enabled {
+		log.Println("startup-refresh: disabled via configuration")
+		return
+	}
+
+	// Try leader election if enabled and storage supports it
+	var locker AdvisoryLocker
+	var hasLock bool
+
+	if cfg.UseLeaderElection {
+		if l, ok := st.(AdvisoryLocker); ok {
+			locker = l
+
+			// Try to acquire leader lock (non-blocking)
+			lockCtx, cancel := context.WithTimeout(ctx, cfg.LeaderLockTimeout)
+			acquired, err := locker.AcquireAdvisoryLock(lockCtx, startupRefreshLockKey)
+			cancel()
+
+			if err != nil {
+				log.Printf("startup-refresh: failed to acquire leader lock: %v (proceeding anyway)", err)
+				// Fall through - we'll run the refresh anyway since we can't coordinate
+			} else if !acquired {
+				log.Println("startup-refresh: another replica is handling refresh, skipping")
+				return
+			} else {
+				hasLock = true
+				log.Println("startup-refresh: acquired leader lock, this replica will handle refresh")
+			}
+		} else {
+			log.Println("startup-refresh: leader election not available (storage doesn't support advisory locks)")
+		}
+	}
+
+	// Ensure we release the lock when done
+	defer func() {
+		if hasLock && locker != nil {
+			if _, err := locker.ReleaseAdvisoryLock(context.Background(), startupRefreshLockKey); err != nil {
+				log.Printf("startup-refresh: failed to release leader lock: %v", err)
+			} else {
+				log.Println("startup-refresh: released leader lock")
+			}
+		}
+	}()
+
+	log.Printf("startup-refresh: starting with %d workers (cache_ttl=%s, timeout=%s)",
+		cfg.NumWorkers, cfg.CacheTTL, cfg.ProviderTimeout)
+
+	providers := rates.Providers()
+	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
+
+	// Identify providers that need refresh
+	var needsRefresh []rates.ProviderDescriptor
+	for _, p := range providers {
+		snap, err := st.GetRatesSnapshot(ctx, p.Key)
+		if err != nil || snap == nil || len(snap.Payload) == 0 {
+			log.Printf("startup-refresh: %s needs refresh (no cached data)", p.Key)
+			needsRefresh = append(needsRefresh, p)
+			continue
+		}
+
+		age := time.Since(snap.FetchedAt)
+		if age >= cfg.CacheTTL {
+			log.Printf("startup-refresh: %s needs refresh (cache expired: %s ago, TTL: %s)", p.Key, age.Round(time.Second), cfg.CacheTTL)
+			needsRefresh = append(needsRefresh, p)
+			continue
+		}
+
+		log.Printf("startup-refresh: %s cache is fresh (%s ago)", p.Key, age.Round(time.Second))
+	}
+
+	if len(needsRefresh) == 0 {
+		log.Println("startup-refresh: all providers have fresh cached data, nothing to refresh")
+		return
+	}
+
+	log.Printf("startup-refresh: queuing %d providers for refresh: %v", len(needsRefresh), providerKeys(needsRefresh))
+
+	// Create work queue
+	workQueue := make(chan rates.ProviderDescriptor, len(needsRefresh))
+	for _, p := range needsRefresh {
+		workQueue <- p
+	}
+	close(workQueue)
+
+	// Track results
+	type workerResult struct {
+		provider string
+		success  bool
+		duration time.Duration
+		err      error
+	}
+	results := make(chan workerResult, len(needsRefresh))
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < cfg.NumWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for provider := range workQueue {
+				// Check if context is cancelled
+				select {
+				case <-ctx.Done():
+					results <- workerResult{provider: provider.Key, err: ctx.Err()}
+					continue
+				default:
+				}
+
+				start := time.Now()
+				providerCtx, cancel := context.WithTimeout(ctx, cfg.ProviderTimeout)
+
+				// Refresh the provider
+				err := refreshProvider(providerCtx, svc, st, provider)
+				cancel()
+
+				duration := time.Since(start)
+				results <- workerResult{
+					provider: provider.Key,
+					success:  err == nil,
+					duration: duration,
+					err:      err,
+				}
+
+				if err != nil {
+					log.Printf("startup-refresh: worker-%d: %s failed after %s: %v",
+						workerID, provider.Key, duration.Round(time.Millisecond), err)
+				} else {
+					log.Printf("startup-refresh: worker-%d: %s completed in %s",
+						workerID, provider.Key, duration.Round(time.Millisecond))
+				}
+			}
+		}(i)
+	}
+
+	// Wait for workers and collect results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var successCount, failCount int
+	for r := range results {
+		if r.success {
+			successCount++
+		} else {
+			failCount++
+		}
+	}
+
+	log.Printf("startup-refresh: completed - success: %d, failed: %d", successCount, failCount)
+}
+
+// refreshProvider handles refreshing a single provider's data.
+func refreshProvider(ctx context.Context, svc *rates.Service, st storage.Storage, provider rates.ProviderDescriptor) error {
+	// First, try to discover and download the PDF
+	if _, err := rates.RefreshProviderPDF(provider); err != nil {
+		log.Printf("startup-refresh: %s PDF discovery failed: %v", provider.Key, err)
+		// Continue anyway - maybe the PDF already exists locally
+	}
+
+	// Parse and cache the rates
+	resp, err := svc.ForceRefresh(ctx, provider.Key)
+	if err != nil {
+		return err
+	}
+
+	// Save to storage
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("marshal response: %w", err)
+	}
+
+	if err := st.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
+		Provider:  provider.Key,
+		Payload:   payload,
+		FetchedAt: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("save snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// providerKeys extracts provider keys from a slice of ProviderDescriptors.
+func providerKeys(providers []rates.ProviderDescriptor) []string {
+	keys := make([]string, len(providers))
+	for i, p := range providers {
+		keys[i] = p.Key
+	}
+	return keys
+}

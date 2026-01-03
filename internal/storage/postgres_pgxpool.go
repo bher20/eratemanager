@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -74,7 +74,71 @@ func (s *PostgresPoolStorage) UpdateScheduledJob(ctx context.Context, name strin
 }
 
 func (s *PostgresPoolStorage) Migrate(ctx context.Context) error {
-	// Migrations are handled by goose in internal/migrate
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS providers (
+            key TEXT PRIMARY KEY,
+            name TEXT,
+            landing_url TEXT,
+            default_pdf_path TEXT,
+            notes TEXT
+        );`,
+		`CREATE TABLE IF NOT EXISTS rates_snapshots (
+            id SERIAL PRIMARY KEY,
+            provider TEXT NOT NULL,
+            payload BYTEA NOT NULL,
+            fetched_at TIMESTAMPTZ NOT NULL
+        );`,
+		`CREATE TABLE IF NOT EXISTS batch_progress (
+            batch_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            error_message TEXT,
+            retry_count INTEGER DEFAULT 0,
+            PRIMARY KEY (batch_id, provider)
+        );`,
+		`CREATE INDEX IF NOT EXISTS idx_batch_progress_status ON batch_progress(batch_id, status);`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			username TEXT UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ,
+			last_used_at TIMESTAMPTZ,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS casbin_rules (
+			id SERIAL PRIMARY KEY,
+			ptype TEXT NOT NULL,
+			v0 TEXT,
+			v1 TEXT,
+			v2 TEXT,
+			v3 TEXT,
+			v4 TEXT,
+			v5 TEXT
+		);`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.pool.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -108,7 +172,7 @@ func (s *PostgresPoolStorage) GetProvider(ctx context.Context, key string) (*Pro
 func (s *PostgresPoolStorage) UpsertProvider(ctx context.Context, p Provider) error {
 	_, err := s.pool.Exec(ctx, `
         INSERT INTO providers (key, name, landing_url, default_pdf_path, notes)
-        VALUES ($1,$2,$3,$4,$5)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (key) DO UPDATE SET
             name=EXCLUDED.name,
             landing_url=EXCLUDED.landing_url,
@@ -146,7 +210,7 @@ func (s *PostgresPoolStorage) SaveRatesSnapshot(ctx context.Context, snap RatesS
 	}
 	_, err := s.pool.Exec(ctx, `
         INSERT INTO rates_snapshots (provider, payload, fetched_at)
-        VALUES ($1,$2,$3)
+        VALUES ($1, $2, $3)
     `, snap.Provider, snap.Payload, snap.FetchedAt)
 	return err
 }
@@ -213,12 +277,6 @@ func (s *PostgresPoolStorage) GetSetting(ctx context.Context, key string) (strin
 	var value string
 	err := s.pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&value)
 	if err != nil {
-		// pgx returns pgx.ErrNoRows, but we can check if err.Error() contains "no rows" or just return empty
-		// Better to handle it properly if we imported pgx, but here we can just return error or empty.
-		// Actually, pgxpool.QueryRow returns a Row which has Scan. Scan returns pgx.ErrNoRows.
-		// Since we don't import pgx directly here (only pgxpool), we might need to check string or import pgx/v5.
-		// But wait, we import github.com/jackc/pgx/v5/pgxpool.
-		// Let's just return empty string if error.
 		return "", nil
 	}
 	return value, nil
@@ -246,9 +304,6 @@ func (s *PostgresPoolStorage) GetUser(ctx context.Context, id string) (*User, er
 	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
 	var u User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &u, nil
@@ -258,9 +313,6 @@ func (s *PostgresPoolStorage) GetUserByUsername(ctx context.Context, username st
 	row := s.pool.QueryRow(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
 	var u User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &u, nil
@@ -310,9 +362,6 @@ func (s *PostgresPoolStorage) GetToken(ctx context.Context, id string) (*Token, 
 	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE id = $1`, id)
 	var t Token
 	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &t, nil
@@ -322,9 +371,6 @@ func (s *PostgresPoolStorage) GetTokenByHash(ctx context.Context, hash string) (
 	row := s.pool.QueryRow(ctx, `SELECT id, user_id, name, token_hash, role, created_at, expires_at, last_used_at FROM tokens WHERE token_hash = $1`, hash)
 	var t Token
 	if err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.TokenHash, &t.Role, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt); err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &t, nil
@@ -355,5 +401,88 @@ func (s *PostgresPoolStorage) DeleteToken(ctx context.Context, id string) error 
 
 func (s *PostgresPoolStorage) UpdateTokenLastUsed(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE tokens SET last_used_at = $1 WHERE id = $2`, time.Now(), id)
+	return err
+}
+
+func (s *PostgresPoolStorage) LoadCasbinRules(ctx context.Context) ([]CasbinRule, error) {
+	rows, err := s.pool.Query(ctx, `SELECT ptype, v0, v1, v2, v3, v4, v5 FROM casbin_rules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CasbinRule
+	for rows.Next() {
+		var r CasbinRule
+		var v0, v1, v2, v3, v4, v5 *string
+		if err := rows.Scan(&r.PType, &v0, &v1, &v2, &v3, &v4, &v5); err != nil {
+			return nil, err
+		}
+		if v0 != nil {
+			r.V0 = *v0
+		}
+		if v1 != nil {
+			r.V1 = *v1
+		}
+		if v2 != nil {
+			r.V2 = *v2
+		}
+		if v3 != nil {
+			r.V3 = *v3
+		}
+		if v4 != nil {
+			r.V4 = *v4
+		}
+		if v5 != nil {
+			r.V5 = *v5
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresPoolStorage) AddCasbinRule(ctx context.Context, rule CasbinRule) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO casbin_rules (ptype, v0, v1, v2, v3, v4, v5) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5)
+	return err
+}
+
+func (s *PostgresPoolStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) error {
+	query := "DELETE FROM casbin_rules WHERE ptype = $1"
+	args := []interface{}{rule.PType}
+	idx := 2
+
+	if rule.V0 != "" {
+		query += " AND v0 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V0)
+		idx++
+	}
+	if rule.V1 != "" {
+		query += " AND v1 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V1)
+		idx++
+	}
+	if rule.V2 != "" {
+		query += " AND v2 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V2)
+		idx++
+	}
+	if rule.V3 != "" {
+		query += " AND v3 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V3)
+		idx++
+	}
+	if rule.V4 != "" {
+		query += " AND v4 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V4)
+		idx++
+	}
+	if rule.V5 != "" {
+		query += " AND v5 = $" + fmt.Sprintf("%d", idx)
+		args = append(args, rule.V5)
+		idx++
+	}
+
+	_, err := s.pool.Exec(ctx, query, args...)
 	return err
 }
