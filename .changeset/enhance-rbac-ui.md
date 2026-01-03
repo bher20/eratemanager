@@ -8,3 +8,6 @@ feat: Enhance RBAC management
 - Implemented policy management (add/remove) in backend
 - Flattened RBAC menu structure for better accessibility
 - Fixed JSON error on role creation response
+
+- Note: Backend improvements also include startup refresh leader election
+- and a worker-pool for concurrent provider data refreshes (configurable).
