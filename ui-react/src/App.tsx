@@ -7,7 +7,6 @@ import {
   GeneralSettingsPage, 
   UsersPage,
   RolesPage,
-  PrivilegesPage,
   LoginPage, 
   TokensPage, 
   OnboardingPage,
@@ -73,7 +72,6 @@ function App() {
                     <Route path="/settings/general" element={<GeneralSettingsPage />} />
                     <Route path="/settings/users" element={<UsersPage />} />
                     <Route path="/settings/rbac/roles" element={<RolesPage />} />
-                    <Route path="/settings/rbac/privileges" element={<PrivilegesPage />} />
                   </Routes>
                 </Layout>
               </RequireAuth>

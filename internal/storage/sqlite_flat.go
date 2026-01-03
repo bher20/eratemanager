@@ -441,3 +441,67 @@ func (s *SQLiteStorage) UpdateTokenLastUsed(ctx context.Context, id string) erro
 	_, err := s.db.ExecContext(ctx, `UPDATE tokens SET last_used_at = ? WHERE id = ?`, time.Now().Format(time.RFC3339), id)
 	return err
 }
+
+func (s *SQLiteStorage) LoadCasbinRules(ctx context.Context) ([]CasbinRule, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT ptype, v0, v1, v2, v3, v4, v5 FROM casbin_rules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CasbinRule
+	for rows.Next() {
+		var r CasbinRule
+		var v0, v1, v2, v3, v4, v5 sql.NullString
+		if err := rows.Scan(&r.PType, &v0, &v1, &v2, &v3, &v4, &v5); err != nil {
+			return nil, err
+		}
+		r.V0 = v0.String
+		r.V1 = v1.String
+		r.V2 = v2.String
+		r.V3 = v3.String
+		r.V4 = v4.String
+		r.V5 = v5.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStorage) AddCasbinRule(ctx context.Context, rule CasbinRule) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO casbin_rules (ptype, v0, v1, v2, v3, v4, v5) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5)
+	return err
+}
+
+func (s *SQLiteStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) error {
+	query := `DELETE FROM casbin_rules WHERE ptype = ?`
+	args := []interface{}{rule.PType}
+
+	if rule.V0 != "" {
+		query += " AND v0 = ?"
+		args = append(args, rule.V0)
+	}
+	if rule.V1 != "" {
+		query += " AND v1 = ?"
+		args = append(args, rule.V1)
+	}
+	if rule.V2 != "" {
+		query += " AND v2 = ?"
+		args = append(args, rule.V2)
+	}
+	if rule.V3 != "" {
+		query += " AND v3 = ?"
+		args = append(args, rule.V3)
+	}
+	if rule.V4 != "" {
+		query += " AND v4 = ?"
+		args = append(args, rule.V4)
+	}
+	if rule.V5 != "" {
+		query += " AND v5 = ?"
+		args = append(args, rule.V5)
+	}
+
+	_, err := s.db.ExecContext(ctx, query, args...)
+	return err
+}

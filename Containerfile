@@ -16,7 +16,14 @@ RUN npm run build
 ###############################
 FROM docker.io/library/golang:1.24-alpine AS go-builder
 
+# Install ca-certificates to ensure we have the latest CA bundle
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /app
+
+# Add missing intermediate certificates (e.g., GoDaddy G2 for WHUD)
+COPY certs/*.pem /usr/local/share/ca-certificates/
+RUN cat /usr/local/share/ca-certificates/*.pem >> /etc/ssl/certs/ca-certificates.crt || true
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -35,7 +42,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
 ###############################
 FROM gcr.io/distroless/static
 
-# Copy CA certificates for TLS verification
+# Copy CA certificates including our custom intermediate certs
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 COPY --from=go-builder /app/eratemanager /eratemanager

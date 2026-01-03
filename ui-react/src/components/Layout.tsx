@@ -16,7 +16,6 @@ import {
   ChevronRight,
   User,
   Shield,
-  Lock
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -41,14 +40,7 @@ const navigation: NavItem[] = [
     children: [
       { name: 'General', href: '/settings/general', icon: Settings },
       { name: 'Users', href: '/settings/users', icon: User },
-      { 
-        name: 'RBAC', 
-        icon: Shield,
-        children: [
-          { name: 'Roles', href: '/settings/rbac/roles', icon: Shield },
-          { name: 'Privileges', href: '/settings/rbac/privileges', icon: Lock }
-        ]
-      }
+      { name: 'Roles & Policies', href: '/settings/rbac/roles', icon: Shield }
     ]
   },
 ]

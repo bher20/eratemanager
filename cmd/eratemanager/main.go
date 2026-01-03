@@ -11,6 +11,7 @@ import (
 	"github.com/bher20/eratemanager/internal/api"
 	"github.com/bher20/eratemanager/internal/cron"
 	dbmigrate "github.com/bher20/eratemanager/internal/migrate"
+	"github.com/bher20/eratemanager/internal/storage"
 )
 
 func main() {
@@ -107,6 +108,21 @@ func serve() error {
 	if port == "" {
 		port = "8000"
 	}
+
+	// Start background refresh of missing/expired provider data
+	ctx := context.Background()
+	driver, dsn := getDBEnv()
+	st, err := storage.Open(ctx, storage.Config{Driver: driver, DSN: dsn})
+	if err != nil {
+		log.Printf("warning: could not open storage for startup refresh: %v", err)
+	} else {
+		// Run startup refresh in background goroutine
+		go func() {
+			defer st.Close()
+			cron.RunStartupRefresh(ctx, st)
+		}()
+	}
+
 	mux := api.NewMux()
 	addr := ":" + port
 	log.Printf("eRateManager listening on %s", addr)

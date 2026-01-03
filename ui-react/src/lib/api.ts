@@ -54,7 +54,7 @@ export async function getProviders(): Promise<ProvidersResponse> {
 }
 
 export async function getRates(provider: string): Promise<RatesResponse> {
-  return fetchApi<RatesResponse>(`/rates/electric/${provider}`)
+  return fetchApi<RatesResponse>(`/rates/electric/${provider}/residential`)
 }
 export const getResidentialRates = getRates
 
@@ -73,6 +73,10 @@ export async function refreshRates(provider: string, type: 'electric' | 'water' 
   })
 }
 export const refreshProvider = refreshRates
+
+export async function refreshWaterProvider(provider: string): Promise<RefreshResponse> {
+  return refreshRates(provider, 'water')
+}
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   const response = await fetchApi<LoginResponse>('/auth/login', {
@@ -99,10 +103,10 @@ export async function getTokens(): Promise<Token[]> {
   return fetchApi<Token[]>('/auth/tokens')
 }
 
-export async function createToken(name: string, role: string): Promise<TokenResponse> {
+export async function createToken(name: string, role: string, expiresIn?: string): Promise<TokenResponse> {
   return fetchApi<TokenResponse>('/auth/tokens', {
     method: 'POST',
-    body: JSON.stringify({ name, role }),
+    body: JSON.stringify({ name, role, expires_in: expiresIn || 'never' }),
   })
 }
 
@@ -132,5 +136,41 @@ export async function setRefreshInterval(interval: number): Promise<void> {
   await fetchApi('/system/refresh-interval', {
     method: 'POST',
     body: JSON.stringify({ interval }),
+  })
+}
+
+export async function createUser(username: string, password: string, role: string): Promise<User> {
+  return fetchApi<User>('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role }),
+  })
+}
+
+export async function updateUser(id: string, role: string): Promise<User> {
+  return fetchApi<User>(`/auth/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+}
+
+export async function addPolicy(role: string, resource: string, action: string): Promise<void> {
+  await fetchApi('/auth/privileges', {
+    method: 'POST',
+    body: JSON.stringify({ role, resource, action }),
+  })
+}
+
+export async function removePolicy(role: string, resource: string, action: string): Promise<void> {
+  await fetchApi('/auth/privileges', {
+    method: 'DELETE',
+    body: JSON.stringify({ role, resource, action }),
+  })
+}
+
+
+export async function createRole(role: string, policies: { resource: string; action: string }[] = []): Promise<void> {
+  await fetchApi('/auth/roles', {
+    method: 'POST',
+    body: JSON.stringify({ role, policies }),
   })
 }

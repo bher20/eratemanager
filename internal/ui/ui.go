@@ -2,6 +2,7 @@ package ui
 
 import (
 	"embed"
+	"io"
 	"io/fs"
 	"net/http"
 	"path"
@@ -46,21 +47,59 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	upath = path.Clean(upath)
 
+	// Update the request path to the cleaned version
+	r.URL.Path = upath
+
 	// Try to open the file
 	f, err := h.fs.Open(upath)
 	if err != nil {
 		// If file not found and it's not an asset, serve index.html for SPA routing
 		if !strings.Contains(upath, ".") {
-			// Serve index.html for client-side routing
-			r.URL.Path = "/index.html"
-			http.FileServer(h.fs).ServeHTTP(w, r)
+			h.serveIndex(w, r)
 			return
 		}
 		http.NotFound(w, r)
 		return
 	}
-	f.Close()
+	defer f.Close()
 
-	// File exists, serve it
+	// Check if it's a directory
+	stat, err := f.Stat()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if stat.IsDir() {
+		// Serve index.html for directory requests
+		h.serveIndex(w, r)
+		return
+	}
+
+	// File exists and is not a directory, serve it
 	http.FileServer(h.fs).ServeHTTP(w, r)
+}
+
+// serveIndex serves index.html directly without redirects
+func (h *spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	f, err := h.fs.Open("/index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Check if the file implements io.ReadSeeker (required by ServeContent)
+	if seeker, ok := f.(io.ReadSeeker); ok {
+		http.ServeContent(w, r, "index.html", stat.ModTime(), seeker)
+	} else {
+		// Fallback: read the entire file and write it
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		io.Copy(w, f)
+	}
 }

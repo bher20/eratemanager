@@ -41,6 +41,11 @@ type Storage interface {
 	DeleteToken(ctx context.Context, id string) error
 	UpdateTokenLastUsed(ctx context.Context, id string) error
 
+	// Casbin Rules
+	LoadCasbinRules(ctx context.Context) ([]CasbinRule, error)
+	AddCasbinRule(ctx context.Context, rule CasbinRule) error
+	RemoveCasbinRule(ctx context.Context, rule CasbinRule) error
+
 	// Close releases any resources (no-op for in-memory).
 	Close() error
 
