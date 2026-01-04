@@ -103,6 +103,7 @@ export function EmailSettingsPage() {
               <option value="smtp">SMTP</option>
               <option value="gmail">Gmail</option>
               <option value="sendgrid">Sendgrid</option>
+              <option value="resend">Resend</option>
             </select>
           </div>
 
@@ -130,7 +131,7 @@ export function EmailSettingsPage() {
             </div>
           </div>
 
-          {config.provider === 'sendgrid' ? (
+          {(config.provider === 'sendgrid' || config.provider === 'resend') ? (
             <div className="grid gap-2">
               <label htmlFor="api_key" className="text-sm font-medium text-foreground">API Key</label>
               <input

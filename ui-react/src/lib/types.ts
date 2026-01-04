@@ -117,7 +117,7 @@ export interface TokenResponse {
 
 export interface EmailConfig {
   id?: string
-  provider: 'smtp' | 'gmail' | 'sendgrid'
+  provider: 'smtp' | 'gmail' | 'sendgrid' | 'resend'
   host?: string
   port?: number
   username?: string

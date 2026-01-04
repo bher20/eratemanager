@@ -1,10 +1,14 @@
 package notification
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/smtp"
 
 	"github.com/bher20/eratemanager/internal/storage"
@@ -46,6 +50,8 @@ func (s *Service) SendEmail(ctx context.Context, to, subject, body string) error
 		return s.sendSMTP(cfg, to, subject, body)
 	case "sendgrid":
 		return s.sendSendgrid(cfg, to, subject, body)
+	case "resend":
+		return s.sendResend(cfg, to, subject, body)
 	default:
 		return fmt.Errorf("unknown provider: %s", cfg.Provider)
 	}
@@ -58,6 +64,8 @@ func (s *Service) TestConfig(ctx context.Context, cfg storage.EmailConfig, to st
 		return s.sendSMTP(&cfg, to, "Test Email", "This is a test email from eRateManager.")
 	case "sendgrid":
 		return s.sendSendgrid(&cfg, to, "Test Email", "This is a test email from eRateManager.")
+	case "resend":
+		return s.sendResend(&cfg, to, "Test Email", "This is a test email from eRateManager.")
 	default:
 		return fmt.Errorf("unknown provider: %s", cfg.Provider)
 	}
@@ -174,5 +182,43 @@ func (s *Service) sendSendgrid(cfg *storage.EmailConfig, to, subject, body strin
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("sendgrid error: %d %s", resp.StatusCode, resp.Body)
 	}
+	return nil
+}
+
+func (s *Service) sendResend(cfg *storage.EmailConfig, to, subject, body string) error {
+	url := "https://api.resend.com/emails"
+
+	payload := map[string]string{
+		"from":    fmt.Sprintf("%s <%s>", cfg.FromName, cfg.FromAddress),
+		"to":      to,
+		"subject": subject,
+		"html":    body,
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("resend error: %d %s", resp.StatusCode, string(bodyBytes))
+	}
+
 	return nil
 }

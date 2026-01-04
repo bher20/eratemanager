@@ -53,7 +53,7 @@ type CasbinRule struct {
 // EmailConfig holds configuration for email notifications.
 type EmailConfig struct {
 	ID          string    `json:"id"`
-	Provider    string    `json:"provider"` // "smtp", "sendgrid", "gmail"
+	Provider    string    `json:"provider"` // "smtp", "sendgrid", "gmail", "resend"
 	Host        string    `json:"host,omitempty"`
 	Port        int       `json:"port,omitempty"`
 	Username    string    `json:"username,omitempty"`
