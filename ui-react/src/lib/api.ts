@@ -42,17 +42,30 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }))
+    const text = await response.text()
+    let error = { message: 'An error occurred' }
+    if (text) {
+      try {
+        error = JSON.parse(text)
+      } catch {
+        error = { message: text }
+      }
+    }
     throw new Error(error.message || 'An error occurred')
   }
 
   // Handle empty responses (e.g., 200 OK with no body)
   const text = await response.text()
-  if (!text) {
+  if (!text || text.trim() === '') {
     return undefined as T
   }
   
-  return JSON.parse(text)
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    console.error('Failed to parse JSON response:', text)
+    throw new Error('Invalid JSON response from server')
+  }
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
