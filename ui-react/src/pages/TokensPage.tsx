@@ -5,6 +5,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Button } from '@/components/Button'
 import { Select } from '@/components/Select'
 import { Trash2, Plus, Copy, Check, AlertCircle } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { Navigate } from 'react-router-dom'
 
 export function TokensPage() {
   const [tokens, setTokens] = useState<Token[]>([])
@@ -15,6 +17,11 @@ export function TokensPage() {
   const [customExpirationDate, setCustomExpirationDate] = useState('')
   const [createdTokenValue, setCreatedTokenValue] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const { checkPermission } = useAuth()
+
+  if (!checkPermission('tokens', 'read')) {
+    return <Navigate to="/" replace />
+  }
 
   useEffect(() => {
     loadTokens()

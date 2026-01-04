@@ -17,6 +17,7 @@ import { getProviders, getResidentialRates, refreshProvider } from '@/lib/api'
 import { formatCurrency, formatRate, formatDate } from '@/lib/utils'
 import { Zap, DollarSign, Calendar, RefreshCw, AlertCircle } from 'lucide-react'
 import type { RatesResponse } from '@/lib/types'
+import { useAuth } from '@/context/AuthContext'
 
 export function ElectricPage() {
   const [searchParams] = useSearchParams()
@@ -24,6 +25,7 @@ export function ElectricPage() {
   const [selectedProvider, setSelectedProvider] = useState<string>(urlProvider || '')
   const [ratesData, setRatesData] = useState<RatesResponse | null>(null)
   const [autoLoaded, setAutoLoaded] = useState<boolean>(false)
+  const { checkPermission } = useAuth()
 
   const { data: providersData, loading: loadingProviders } = useAsync(
     () => getProviders(),
@@ -125,15 +127,17 @@ export function ElectricPage() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleRefresh}
-                  disabled={!selectedProvider || refreshing}
-                  loading={refreshing}
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
-                </Button>
+                {checkPermission('providers', 'write') && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRefresh}
+                    disabled={!selectedProvider || refreshing}
+                    loading={refreshing}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </Button>
+                )}
               </div>
             </div>
           )}
