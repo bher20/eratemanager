@@ -114,3 +114,19 @@ export interface TokenResponse {
   access_token?: string
   token_value?: string
 }
+
+export interface EmailConfig {
+  id?: string
+  provider: 'smtp' | 'gmail' | 'sendgrid'
+  host?: string
+  port?: number
+  username?: string
+  password?: string
+  from_address: string
+  from_name: string
+  api_key?: string
+  encryption?: 'none' | 'ssl' | 'tls'
+  enabled: boolean
+  created_at?: string
+  updated_at?: string
+}

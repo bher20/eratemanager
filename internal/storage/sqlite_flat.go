@@ -83,12 +83,31 @@ func (s *SQLiteStorage) Migrate(ctx context.Context) error {
 			last_used_at TEXT,
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS email_config (
+			id TEXT PRIMARY KEY,
+			provider TEXT,
+			host TEXT,
+			port INTEGER,
+			username TEXT,
+			password TEXT,
+			from_address TEXT,
+			from_name TEXT,
+			api_key TEXT,
+			encryption TEXT,
+			enabled BOOLEAN,
+			created_at TEXT,
+			updated_at TEXT
+		);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
+	// Add encryption column if not exists (SQLite doesn't support IF NOT EXISTS for ADD COLUMN)
+	// We can ignore the error if it fails (column already exists)
+	s.db.ExecContext(ctx, `ALTER TABLE email_config ADD COLUMN encryption TEXT`)
+
 	return nil
 }
 
@@ -503,5 +522,57 @@ func (s *SQLiteStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) e
 	}
 
 	_, err := s.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (s *SQLiteStorage) GetEmailConfig(ctx context.Context) (*EmailConfig, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, provider, host, port, username, password, from_address, from_name, api_key, encryption, enabled, created_at, updated_at
+		FROM email_config
+		LIMIT 1
+	`)
+	var c EmailConfig
+	var encryption sql.NullString
+	var createdAt, updatedAt string
+	err := row.Scan(
+		&c.ID, &c.Provider, &c.Host, &c.Port, &c.Username, &c.Password,
+		&c.FromAddress, &c.FromName, &c.APIKey, &encryption, &c.Enabled, &createdAt, &updatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if encryption.Valid {
+		c.Encryption = encryption.String
+	}
+	c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	c.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &c, nil
+}
+
+func (s *SQLiteStorage) SaveEmailConfig(ctx context.Context, config EmailConfig) error {
+	// Check if exists
+	existing, err := s.GetEmailConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().Format(time.RFC3339)
+	if existing == nil {
+		// Insert
+		_, err = s.db.ExecContext(ctx, `
+			INSERT INTO email_config (id, provider, host, port, username, password, from_address, from_name, api_key, encryption, enabled, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, config.ID, config.Provider, config.Host, config.Port, config.Username, config.Password, config.FromAddress, config.FromName, config.APIKey, config.Encryption, config.Enabled, now, now)
+	} else {
+		// Update
+		_, err = s.db.ExecContext(ctx, `
+			UPDATE email_config
+			SET provider=?, host=?, port=?, username=?, password=?, from_address=?, from_name=?, api_key=?, encryption=?, enabled=?, updated_at=?
+			WHERE id=?
+		`, config.Provider, config.Host, config.Port, config.Username, config.Password, config.FromAddress, config.FromName, config.APIKey, config.Encryption, config.Enabled, now, existing.ID)
+	}
 	return err
 }

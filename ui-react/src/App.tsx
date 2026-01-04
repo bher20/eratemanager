@@ -4,14 +4,12 @@ import {
   DashboardPage, 
   ElectricPage, 
   WaterPage, 
-  GeneralSettingsPage, 
-  UsersPage,
-  RolesPage,
   LoginPage, 
   TokensPage, 
   OnboardingPage,
   ProfilePage
 } from '@/pages'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { AuthProvider } from '@/context/AuthContext'
 import { RequireAuth } from '@/components/RequireAuth'
 import { useEffect, useState } from 'react'
@@ -68,10 +66,7 @@ function App() {
                     <Route path="/tokens" element={<TokensPage />} />
                     
                     {/* Settings Routes */}
-                    <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
-                    <Route path="/settings/general" element={<GeneralSettingsPage />} />
-                    <Route path="/settings/users" element={<UsersPage />} />
-                    <Route path="/settings/rbac/roles" element={<RolesPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                   </Routes>
                 </Layout>
               </RequireAuth>

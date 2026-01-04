@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { GeneralSettingsPage } from './GeneralSettingsPage'
+import { EmailSettingsPage } from './EmailSettingsPage'
 import { UsersPage } from './UsersPage'
 import { RolesPage } from './RolesPage'
-import { ProfilePage } from './ProfilePage'
 import { cn } from '@/lib/utils'
 
 export function SettingsPage() {
@@ -10,7 +10,7 @@ export function SettingsPage() {
 
   const tabs = [
     { id: 'general', label: 'General', component: GeneralSettingsPage },
-    { id: 'profile', label: 'Profile', component: ProfilePage },
+    { id: 'email', label: 'Email', component: EmailSettingsPage },
     { id: 'users', label: 'Users', component: UsersPage },
     { id: 'roles', label: 'Roles', component: RolesPage },
   ]

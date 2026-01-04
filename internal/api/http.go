@@ -18,8 +18,10 @@ import (
 	"github.com/bher20/eratemanager/internal/auth"
 	"github.com/bher20/eratemanager/internal/metrics"
 	migrate "github.com/bher20/eratemanager/internal/migrate"
+	"github.com/bher20/eratemanager/internal/notification"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/internal/version"
 	"github.com/bher20/eratemanager/internal/ui"
 	"github.com/robfig/cron/v3"
 )
@@ -104,6 +106,12 @@ func NewMux() *http.ServeMux {
 				log.Println("No users found. Waiting for initial setup via UI.")
 			}
 		}
+	}
+
+	// Initialize Notification Service
+	var notifSvc *notification.Service
+	if st != nil {
+		notifSvc = notification.NewService(st)
 	}
 
 	mux := http.NewServeMux()
@@ -546,6 +554,11 @@ func NewMux() *http.ServeMux {
 
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		})))
+
+		// Notification Routes
+		if notifSvc != nil {
+			registerNotificationRoutes(mux, authSvc, notifSvc)
+		}
 	}
 
 	// Metrics endpoint.
@@ -616,6 +629,7 @@ func NewMux() *http.ServeMux {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"storage": displayStorage,
+			"version": version.Version,
 		})
 	})
 

@@ -15,7 +15,6 @@ import {
   ChevronDown,
   ChevronRight,
   User,
-  Shield,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -35,15 +34,7 @@ const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Electric Rates', href: '/electric', icon: Zap, permission: { resource: 'rates', action: 'read' } },
   { name: 'Water Rates', href: '/water', icon: Droplets, permission: { resource: 'rates', action: 'read' } },
-  { 
-    name: 'Settings', 
-    icon: Settings,
-    children: [
-      { name: 'General', href: '/settings/general', icon: Settings, permission: { resource: 'settings', action: 'write' } },
-      { name: 'Users', href: '/settings/users', icon: User, permission: { resource: 'users', action: 'read' } },
-      { name: 'Roles & Policies', href: '/settings/rbac/roles', icon: Shield, permission: { resource: 'roles', action: 'read' } }
-    ]
-  },
+  { name: 'Settings', href: '/settings', icon: Settings, permission: { resource: 'settings', action: 'read' } },
 ]
 
 const SidebarItem = ({ item, depth = 0, setSidebarOpen }: { item: NavItem, depth?: number, setSidebarOpen: (open: boolean) => void }) => {

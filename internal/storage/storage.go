@@ -46,6 +46,10 @@ type Storage interface {
 	AddCasbinRule(ctx context.Context, rule CasbinRule) error
 	RemoveCasbinRule(ctx context.Context, rule CasbinRule) error
 
+	// Email Configuration
+	GetEmailConfig(ctx context.Context) (*EmailConfig, error)
+	SaveEmailConfig(ctx context.Context, config EmailConfig) error
+
 	// Close releases any resources (no-op for in-memory).
 	Close() error
 
