@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/bher20/eratemanager/internal/storage"
@@ -17,10 +18,11 @@ import (
 type Service struct {
 	storage  storage.Storage
 	enforcer *casbin.Enforcer
+	adapter  *Adapter
 }
 
 func NewService(s storage.Storage) (*Service, error) {
-	// Initialize Casbin
+	// Initialize Casbin model
 	m, err := model.NewModelFromString(`
 [request_definition]
 r = sub, obj, act
@@ -41,24 +43,44 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 		return nil, err
 	}
 
-	e, err := casbin.NewEnforcer(m)
+	// Create adapter for database persistence
+	adapter := NewAdapter(s)
+
+	// Create enforcer with adapter for persistence
+	e, err := casbin.NewEnforcer(m, adapter)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add default policies
-	// Admin can do everything
-	e.AddPolicy("admin", "*", "*")
-	// Editor can read and write rates/providers
-	e.AddPolicy("editor", "rates", "read")
-	e.AddPolicy("editor", "rates", "write")
-	e.AddPolicy("editor", "providers", "read")
-	e.AddPolicy("editor", "providers", "write")
-	// Viewer can only read
-	e.AddPolicy("viewer", "rates", "read")
-	e.AddPolicy("viewer", "providers", "read")
+	// Enable auto-save so policy changes are persisted immediately
+	e.EnableAutoSave(true)
 
-	// Load existing users and add their roles
+	// Load policies from database
+	if err := e.LoadPolicy(); err != nil {
+		log.Printf("auth: warning: failed to load policies from database: %v", err)
+		// Continue anyway - we'll add defaults below
+	}
+
+	// Check if we have any policies loaded, if not, add defaults
+	policies, _ := e.GetPolicy()
+	if len(policies) == 0 {
+		log.Println("auth: no policies found in database, adding defaults")
+		
+		// Admin can do everything
+		e.AddPolicy("admin", "*", "*")
+		// Editor can read and write rates/providers
+		e.AddPolicy("editor", "rates", "read")
+		e.AddPolicy("editor", "rates", "write")
+		e.AddPolicy("editor", "providers", "read")
+		e.AddPolicy("editor", "providers", "write")
+		// Viewer can only read
+		e.AddPolicy("viewer", "rates", "read")
+		e.AddPolicy("viewer", "providers", "read")
+	} else {
+		log.Printf("auth: loaded %d policies from database", len(policies))
+	}
+
+	// Load existing users and ensure their role mappings exist
 	ctx := context.Background()
 	users, err := s.ListUsers(ctx)
 	if err != nil {
@@ -66,11 +88,12 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 	}
 	for _, u := range users {
 		if u.Role != "" {
+			// AddGroupingPolicy is idempotent - won't duplicate
 			e.AddGroupingPolicy(u.ID, u.Role)
 		}
 	}
 
-	return &Service{storage: s, enforcer: e}, nil
+	return &Service{storage: s, enforcer: e, adapter: adapter}, nil
 }
 
 func (s *Service) Authenticate(ctx context.Context, username, password string) (*storage.User, error) {
@@ -175,7 +198,7 @@ func (s *Service) Enforce(sub, obj, act string) (bool, error) {
 }
 
 func (s *Service) LoadPolicy() error {
-	return nil
+	return s.enforcer.LoadPolicy()
 }
 
 func (s *Service) GetAllRoles() ([]string, error) {
