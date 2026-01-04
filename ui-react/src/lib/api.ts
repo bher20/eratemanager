@@ -128,11 +128,11 @@ export async function getPrivileges(): Promise<Privilege[]> {
   return fetchApi<Privilege[]>('/auth/privileges')
 }
 
-export async function getRefreshInterval(): Promise<{ interval: number }> {
-  return fetchApi<{ interval: number }>('/settings/refresh-interval')
+export async function getRefreshInterval(): Promise<{ interval: string }> {
+  return fetchApi<{ interval: string }>('/settings/refresh-interval')
 }
 
-export async function setRefreshInterval(interval: number): Promise<void> {
+export async function setRefreshInterval(interval: string): Promise<void> {
   await fetchApi('/settings/refresh-interval', {
     method: 'POST',
     body: JSON.stringify({ interval }),
