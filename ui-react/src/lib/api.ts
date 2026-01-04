@@ -9,13 +9,15 @@ import type {
   AuthStatus,
   LoginResponse,
   Token,
-  TokenResponse
+  TokenResponse,
+  EmailConfig
 } from './types'
 
 const API_BASE = ''
 
 export interface SystemInfo {
   storage: string
+  version: string
 }
 
 export async function getSystemInfo(): Promise<SystemInfo> {
@@ -191,5 +193,23 @@ export async function createRole(role: string, policies: { resource: string; act
   await fetchApi('/auth/roles', {
     method: 'POST',
     body: JSON.stringify({ role, policies }),
+  })
+}
+
+export async function getEmailConfig(): Promise<EmailConfig> {
+  return fetchApi<EmailConfig>('/api/v1/settings/email')
+}
+
+export async function saveEmailConfig(config: EmailConfig): Promise<void> {
+  return fetchApi<void>('/api/v1/settings/email', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  })
+}
+
+export async function testEmailConfig(config: EmailConfig, to: string): Promise<void> {
+  return fetchApi<void>('/api/v1/settings/email/test', {
+    method: 'POST',
+    body: JSON.stringify({ config, to }),
   })
 }

@@ -200,7 +200,7 @@ export function DashboardPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Version</p>
-                  <p className="font-mono text-sm">v{__APP_VERSION__}</p>
+                  <p className="font-mono text-sm">{systemInfo?.version || `v${__APP_VERSION__}`}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Data Storage</p>

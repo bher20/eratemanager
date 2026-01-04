@@ -35,7 +35,8 @@ COPY . .
 # In the builder stage this is /app/internal/ui/static/react-app
 COPY --from=ui-builder /app/internal/ui/static/react-app ./internal/ui/static/react-app
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/eratemanager ./cmd/eratemanager
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/bher20/eratemanager/internal/version.Version=${VERSION}" -o /app/eratemanager ./cmd/eratemanager
 
 ###############################
 # Stage 3: Runtime

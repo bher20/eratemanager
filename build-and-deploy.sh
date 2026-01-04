@@ -24,7 +24,7 @@ echo ""
 
 # Step 1: Build Docker image
 echo "[1/4] Building Docker image..."
-docker build -t "${FULL_IMAGE}" -f Containerfile .
+docker build --build-arg VERSION="${VERSION}" -t "${FULL_IMAGE}" -f Containerfile .
 if [ $? -ne 0 ]; then
     echo "❌ Docker build failed"
     exit 1

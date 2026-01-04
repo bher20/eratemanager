@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import fs from 'fs'
 
+// Read package.json to get version
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'))
 
 export default defineConfig({

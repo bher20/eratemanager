@@ -92,6 +92,22 @@ func (s *PostgresStorage) Migrate(ctx context.Context) error {
 			v4 TEXT,
 			v5 TEXT
 		);`,
+		`CREATE TABLE IF NOT EXISTS email_config (
+			id TEXT PRIMARY KEY,
+			provider TEXT,
+			host TEXT,
+			port INTEGER,
+			username TEXT,
+			password TEXT,
+			from_address TEXT,
+			from_name TEXT,
+			api_key TEXT,
+			encryption TEXT,
+			enabled BOOLEAN,
+			created_at TIMESTAMPTZ,
+			updated_at TIMESTAMPTZ
+		);`,
+		`ALTER TABLE email_config ADD COLUMN IF NOT EXISTS encryption TEXT;`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -454,5 +470,54 @@ func (s *PostgresStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule)
 	}
 
 	_, err := s.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (s *PostgresStorage) GetEmailConfig(ctx context.Context) (*EmailConfig, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, provider, host, port, username, password, from_address, from_name, api_key, encryption, enabled, created_at, updated_at
+		FROM email_config
+		LIMIT 1
+	`)
+	var c EmailConfig
+	var encryption sql.NullString
+	err := row.Scan(
+		&c.ID, &c.Provider, &c.Host, &c.Port, &c.Username, &c.Password,
+		&c.FromAddress, &c.FromName, &c.APIKey, &encryption, &c.Enabled, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if encryption.Valid {
+		c.Encryption = encryption.String
+	}
+	return &c, nil
+}
+
+func (s *PostgresStorage) SaveEmailConfig(ctx context.Context, config EmailConfig) error {
+	// Check if exists
+	existing, err := s.GetEmailConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	if existing == nil {
+		// Insert
+		_, err = s.db.ExecContext(ctx, `
+			INSERT INTO email_config (id, provider, host, port, username, password, from_address, from_name, api_key, encryption, enabled, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		`, config.ID, config.Provider, config.Host, config.Port, config.Username, config.Password, config.FromAddress, config.FromName, config.APIKey, config.Encryption, config.Enabled, now, now)
+	} else {
+		// Update
+		_, err = s.db.ExecContext(ctx, `
+			UPDATE email_config
+			SET provider=$1, host=$2, port=$3, username=$4, password=$5, from_address=$6, from_name=$7, api_key=$8, encryption=$9, enabled=$10, updated_at=$11
+			WHERE id=$12
+		`, config.Provider, config.Host, config.Port, config.Username, config.Password, config.FromAddress, config.FromName, config.APIKey, config.Encryption, config.Enabled, now, existing.ID)
+	}
 	return err
 }

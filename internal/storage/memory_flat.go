@@ -16,6 +16,7 @@ type MemoryStorage struct {
 	settings      map[string]string
 	users         map[string]User
 	tokens        map[string]Token
+	emailConfig   *EmailConfig
 }
 
 // NewMemory returns a MemoryStorage initialized with default providers.
@@ -281,5 +282,23 @@ func (m *MemoryStorage) AddCasbinRule(ctx context.Context, rule CasbinRule) erro
 
 func (m *MemoryStorage) RemoveCasbinRule(ctx context.Context, rule CasbinRule) error {
 	// No-op
+	return nil
+}
+
+func (m *MemoryStorage) GetEmailConfig(ctx context.Context) (*EmailConfig, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.emailConfig == nil {
+		return nil, nil
+	}
+	// Return a copy
+	cfg := *m.emailConfig
+	return &cfg, nil
+}
+
+func (m *MemoryStorage) SaveEmailConfig(ctx context.Context, config EmailConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.emailConfig = &config
 	return nil
 }

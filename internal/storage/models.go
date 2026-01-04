@@ -50,3 +50,19 @@ type CasbinRule struct {
 	V4    string `json:"v4"`
 	V5    string `json:"v5"`
 }
+// EmailConfig holds configuration for email notifications.
+type EmailConfig struct {
+	ID          string    `json:"id"`
+	Provider    string    `json:"provider"` // "smtp", "sendgrid", "gmail", "resend"
+	Host        string    `json:"host,omitempty"`
+	Port        int       `json:"port,omitempty"`
+	Username    string    `json:"username,omitempty"`
+	Password    string    `json:"password,omitempty"`
+	FromAddress string    `json:"from_address"`
+	FromName    string    `json:"from_name"`
+	APIKey      string    `json:"api_key,omitempty"` // For Sendgrid
+	Encryption  string    `json:"encryption,omitempty"` // "none", "ssl", "tls"
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
