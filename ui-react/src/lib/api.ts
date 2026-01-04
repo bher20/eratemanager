@@ -46,7 +46,13 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(error.message || 'An error occurred')
   }
 
-  return response.json()
+  // Handle empty responses (e.g., 200 OK with no body)
+  const text = await response.text()
+  if (!text) {
+    return undefined as T
+  }
+  
+  return JSON.parse(text)
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
