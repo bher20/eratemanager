@@ -24,9 +24,10 @@ db:
   # dsn: ""
 
 cronWorker:
+  # Runs the in-app cron worker as a long-lived Deployment. It uses intervalSeconds
+  # for the internal refresh loop (seconds or cron syntax) and reads settings from
+  # the DB when present. Enable this when you want the app to self-schedule refreshes.
   enabled: false
-  # Interval in seconds between batch refresh runs.
-  intervalSeconds: 3600
   replicaCount: 1
   resources: {}
   autoscaling:
@@ -81,6 +82,10 @@ imagePullSecrets: []
   # - name: ghcr-pull-secret
 
 batch:
+  # Creates a Kubernetes CronJob that runs `/eratemanager batch` on the cluster
+  # schedule below. The CronJob handles scheduling; the container also reads
+  # intervalSeconds (seconds) for its own inner loop. Use this for cluster-managed
+  # batch runs instead of the long-lived cron worker.
   enabled: true
   schedule: "0 * * * *"    # every hour
   intervalSeconds: 3600    # worker inside container runs every hour too

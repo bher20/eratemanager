@@ -60,7 +60,7 @@ func Run(ctx context.Context, driver, dsn string) error {
 
 	// Initial interval from env or default
 	// Can be integer seconds or cron expression
-	intervalSetting := "300"
+	intervalSetting := "0 0 * * 0" // Default: every Sunday at midnight
 	if raw := os.Getenv("ERATEMANAGER_CRON_INTERVAL_SECONDS"); raw != "" {
 		intervalSetting = raw
 	}

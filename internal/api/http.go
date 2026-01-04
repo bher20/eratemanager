@@ -857,7 +857,7 @@ func handleRefreshInterval(st storage.Storage) http.HandlerFunc {
 				return
 			}
 			if val == "" {
-				val = "3600" // Default to 1 hour
+				val = "0 0 * * 0" // Default: every Sunday at midnight
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"interval": val})

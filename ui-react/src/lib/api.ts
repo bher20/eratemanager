@@ -17,6 +17,7 @@ const API_BASE = ''
 
 export interface SystemInfo {
   storage: string
+  version: string
 }
 
 export async function getSystemInfo(): Promise<SystemInfo> {

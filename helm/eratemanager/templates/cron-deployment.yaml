@@ -32,8 +32,6 @@ spec:
               value: {{ .Values.db.driver | quote }}
             - name: ERATEMANAGER_DB_DSN
               value: {{ include "eratemanager.db.dsn" . | quote }}
-            - name: CRON_INTERVAL_SECONDS
-              value: "{{ .Values.cronWorker.intervalSeconds }}"
           resources:
             {{- toYaml .Values.cronWorker.resources | nindent 12 }}
 {{- end }}

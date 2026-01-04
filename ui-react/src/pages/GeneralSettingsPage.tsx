@@ -11,7 +11,7 @@ import { getRefreshInterval, setRefreshInterval } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 
 export function GeneralSettingsPage() {
-  const [interval, setInterval] = useState('3600')
+  const [interval, setInterval] = useState('0 0 * * 0')
   const [saving, setSaving] = useState(false)
   const { checkPermission } = useAuth()
 
@@ -65,13 +65,13 @@ export function GeneralSettingsPage() {
                 <div className="flex flex-col gap-3">
                   <div className="flex gap-3 items-center">
                     <select
-                      value={['300', '900', '3600', '21600', '43200', '86400'].includes(interval) ? interval : 'custom'}
+                      value={['300', '900', '3600', '21600', '43200', '86400', '0 0 * * 0'].includes(interval) ? interval : 'custom'}
                       onChange={(e) => {
                         if (e.target.value !== 'custom') {
                           setInterval(e.target.value)
                         } else {
                           // If switching to custom, keep current value if it's not in presets, or default to 60s
-                          if (['300', '900', '3600', '21600', '43200', '86400'].includes(interval)) {
+                          if (['300', '900', '3600', '21600', '43200', '86400', '0 0 * * 0'].includes(interval)) {
                             setInterval('') 
                           }
                         }
@@ -84,6 +84,7 @@ export function GeneralSettingsPage() {
                       <option value="21600">Every 6 hours</option>
                       <option value="43200">Every 12 hours</option>
                       <option value="86400">Every 24 hours</option>
+                      <option value="0 0 * * 0">Every week (Sunday at midnight)</option>
                       <option value="custom">Custom</option>
                     </select>
                     <button
@@ -102,7 +103,7 @@ export function GeneralSettingsPage() {
                     </button>
                   </div>
                   
-                  {!['300', '900', '3600', '21600', '43200', '86400'].includes(interval) && (
+                  {!['300', '900', '3600', '21600', '43200', '86400', '0 0 * * 0'].includes(interval) && (
                     <div className="flex items-center gap-2 animate-fade-in">
                       <div className="grid w-full max-w-sm items-center gap-1.5">
                         <label htmlFor="custom-interval" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
