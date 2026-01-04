@@ -28,19 +28,20 @@ type NavItem = {
   href?: string
   icon?: any
   children?: NavItem[]
+  permission?: { resource: string, action: string }
 }
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Electric Rates', href: '/electric', icon: Zap },
-  { name: 'Water Rates', href: '/water', icon: Droplets },
+  { name: 'Electric Rates', href: '/electric', icon: Zap, permission: { resource: 'rates', action: 'read' } },
+  { name: 'Water Rates', href: '/water', icon: Droplets, permission: { resource: 'rates', action: 'read' } },
   { 
     name: 'Settings', 
     icon: Settings,
     children: [
-      { name: 'General', href: '/settings/general', icon: Settings },
-      { name: 'Users', href: '/settings/users', icon: User },
-      { name: 'Roles & Policies', href: '/settings/rbac/roles', icon: Shield }
+      { name: 'General', href: '/settings/general', icon: Settings, permission: { resource: 'settings', action: 'write' } },
+      { name: 'Users', href: '/settings/users', icon: User, permission: { resource: 'users', action: 'read' } },
+      { name: 'Roles & Policies', href: '/settings/rbac/roles', icon: Shield, permission: { resource: 'roles', action: 'read' } }
     ]
   },
 ]
@@ -118,7 +119,27 @@ export function Layout({ children }: LayoutProps) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const { logout, user } = useAuth()
+  const { logout, user, checkPermission } = useAuth()
+
+  const filteredNavigation = navigation.reduce<NavItem[]>((acc, item) => {
+    if (item.permission && !checkPermission(item.permission.resource, item.permission.action)) {
+      return acc
+    }
+
+    if (item.children) {
+      const filteredChildren = item.children.filter(child => 
+        !child.permission || checkPermission(child.permission.resource, child.permission.action)
+      )
+      
+      if (filteredChildren.length > 0) {
+        acc.push({ ...item, children: filteredChildren })
+      }
+    } else {
+      acc.push(item)
+    }
+
+    return acc
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
@@ -160,7 +181,7 @@ export function Layout({ children }: LayoutProps) {
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-            {navigation.map((item) => (
+            {filteredNavigation.map((item) => (
               <SidebarItem key={item.name} item={item} setSidebarOpen={setSidebarOpen} />
             ))}
           </nav>

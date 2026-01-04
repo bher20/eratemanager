@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { User } from '@/lib/types'
+import { hasPermission } from '@/lib/permissions'
 
 interface AuthContextType {
   user: User | null
@@ -8,6 +9,7 @@ interface AuthContextType {
   logout: () => void
   isAuthenticated: boolean
   isLoading: boolean
+  checkPermission: (resource: string, action: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -41,8 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  const checkPermission = (resource: string, action: string) => {
+    return hasPermission(user, resource, action)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, isLoading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, isLoading, checkPermission }}>
       {children}
     </AuthContext.Provider>
   )

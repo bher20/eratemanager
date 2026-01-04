@@ -302,23 +302,73 @@ func NewMux() *http.ServeMux {
 		})))
 
 		// Users management
-		mux.Handle("/auth/users", authSvc.Middleware(authSvc.RequirePermission("users", "read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet {
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		mux.Handle("/auth/users", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			users, err := st.ListUsers(r.Context())
-			if err != nil {
-				http.Error(w, "Internal error", http.StatusInternalServerError)
+
+			if r.Method == http.MethodGet {
+				allowed, err := authSvc.Enforce(token.UserID, "users", "read")
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+
+				users, err := st.ListUsers(r.Context())
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				// Redact password hashes
+				for i := range users {
+					users[i].PasswordHash = ""
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(users)
 				return
 			}
-			// Redact password hashes
-			for i := range users {
-				users[i].PasswordHash = ""
+
+			if r.Method == http.MethodPost {
+				allowed, err := authSvc.Enforce(token.UserID, "users", "write")
+				if err != nil {
+					http.Error(w, "Internal error", http.StatusInternalServerError)
+					return
+				}
+				if !allowed {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+
+				var req struct {
+					Username string `json:"username"`
+					Password string `json:"password"`
+					Role     string `json:"role"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					http.Error(w, "Invalid request body", http.StatusBadRequest)
+					return
+				}
+
+				user, err := authSvc.Register(r.Context(), req.Username, req.Password, req.Role)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				user.PasswordHash = ""
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(user)
+				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(users)
-		}))))
+
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		})))
 
 		// Roles
 		mux.Handle("/auth/roles", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

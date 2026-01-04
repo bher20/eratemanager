@@ -17,6 +17,7 @@ import { getWaterProviders, getWaterRates, refreshWaterProvider } from '@/lib/ap
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Droplets, DollarSign, Calendar, AlertCircle, Waves, RefreshCw } from 'lucide-react'
 import type { WaterRatesResponse } from '@/lib/types'
+import { useAuth } from '@/context/AuthContext'
 
 export function WaterPage() {
   const [searchParams] = useSearchParams()
@@ -25,6 +26,7 @@ export function WaterPage() {
   const [ratesData, setRatesData] = useState<WaterRatesResponse | null>(null)
   const [usage, setUsage] = useState<number>(5000) // Default 5000 gallons
   const [autoLoaded, setAutoLoaded] = useState<boolean>(false)
+  const { checkPermission } = useAuth()
 
   const { data: providers, loading: loadingProviders } = useAsync(
     () => getWaterProviders(),
@@ -135,15 +137,17 @@ export function WaterPage() {
                   ]}
                 />
               </div>
-              <Button
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={!selectedProvider || refreshing}
-                loading={refreshing}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
+              {checkPermission('providers', 'write') && (
+                <Button
+                  variant="outline"
+                  onClick={handleRefresh}
+                  disabled={!selectedProvider || refreshing}
+                  loading={refreshing}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

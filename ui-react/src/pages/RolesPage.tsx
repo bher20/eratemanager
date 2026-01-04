@@ -6,12 +6,19 @@ import { LoadingSpinner } from '@/components/Loading'
 import { Button } from '@/components/Button'
 import { Plus, X, Trash2, Shield, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
+import { Navigate } from 'react-router-dom'
 
 export function RolesPage() {
   const [roles, setRoles] = useState<string[]>([])
   const [privileges, setPrivileges] = useState<Privilege[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
+  const { checkPermission } = useAuth()
+
+  if (!checkPermission('roles', 'read')) {
+    return <Navigate to="/" replace />
+  }
   
   // Modal states
   const [isAddRoleOpen, setIsAddRoleOpen] = useState(false)

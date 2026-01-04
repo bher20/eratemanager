@@ -6,6 +6,8 @@ import { LoadingSpinner } from '@/components/Loading'
 import { Button } from '@/components/Button'
 import { Select } from '@/components/Select'
 import { Plus, X } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { Navigate } from 'react-router-dom'
 
 export function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
@@ -14,6 +16,11 @@ export function UsersPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newUser, setNewUser] = useState({ username: '', password: '', role: '' })
   const [error, setError] = useState('')
+  const { checkPermission } = useAuth()
+
+  if (!checkPermission('users', 'read')) {
+    return <Navigate to="/" replace />
+  }
 
   useEffect(() => {
     loadData()
