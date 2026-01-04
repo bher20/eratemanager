@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 94b4f6b: Add support for Resend as an email provider.
+
+  - Added `resend` to the list of supported email providers in the backend.
+  - Implemented email sending using Resend's API.
+  - Updated the Email Settings UI to allow selecting Resend and entering the API key.
+
+- d2ec950: Implement email notification capability with support for SMTP, Gmail, and Sendgrid.
+
+  - Added `EmailConfig` storage model and interface.
+  - Implemented email configuration storage in Memory, SQLite, and PostgreSQL.
+  - Created a new notification service supporting SMTP (with SSL/TLS and STARTTLS support), Gmail, and Sendgrid.
+  - Added API endpoints for managing email settings and sending test emails.
+  - Created a new Email Settings UI page with provider-specific configuration fields.
+  - Integrated Email settings into the unified Settings page.
+  - Added build-time version injection via ldflags.
+
+- cc8173c: Align refresh scheduling and version display with backend defaults.
+
+  - Set weekly (Sunday at midnight) as the default refresh interval across API, cron worker, and UI preset.
+  - Added an "Every week" preset (cron `0 0 * * 0`) in Settings.
+  - Removed Helm chart `cronWorker.intervalSeconds` to rely on persisted/app defaults.
+  - Dashboard now shows backend-reported version instead of the Vite build constant.
+
+### Patch Changes
+
+- 611f9e7: Implement frontend RBAC UI enforcement, fix user creation "Method Not Allowed" error, and resolve "no rows in result set" in GetUserByUsername.
+
+  - Added frontend permission checking using a new `hasPermission` utility.
+  - Filtered sidebar navigation based on user permissions.
+  - Protected settings, users, roles, and tokens pages with RBAC.
+  - Implemented POST handler for `/auth/users` to allow user creation via API.
+  - Fixed PostgreSQL `GetUserByUsername` to return nil instead of error when user is not found.
+  - Updated Helm chart and package versions to 0.2.3.
+
 ## 0.2.3
 
 ### Patch Changes
