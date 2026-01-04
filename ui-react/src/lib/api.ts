@@ -42,11 +42,30 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }))
+    const text = await response.text()
+    let error = { message: 'An error occurred' }
+    if (text) {
+      try {
+        error = JSON.parse(text)
+      } catch {
+        error = { message: text }
+      }
+    }
     throw new Error(error.message || 'An error occurred')
   }
 
-  return response.json()
+  // Handle empty responses (e.g., 200 OK with no body)
+  const text = await response.text()
+  if (!text || text.trim() === '') {
+    return undefined as T
+  }
+  
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    console.error('Failed to parse JSON response:', text)
+    throw new Error('Invalid JSON response from server')
+  }
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
@@ -128,12 +147,12 @@ export async function getPrivileges(): Promise<Privilege[]> {
   return fetchApi<Privilege[]>('/auth/privileges')
 }
 
-export async function getRefreshInterval(): Promise<{ interval: number }> {
-  return fetchApi<{ interval: number }>('/system/refresh-interval')
+export async function getRefreshInterval(): Promise<{ interval: string }> {
+  return fetchApi<{ interval: string }>('/settings/refresh-interval')
 }
 
-export async function setRefreshInterval(interval: number): Promise<void> {
-  await fetchApi('/system/refresh-interval', {
+export async function setRefreshInterval(interval: string): Promise<void> {
+  await fetchApi('/settings/refresh-interval', {
     method: 'POST',
     body: JSON.stringify({ interval }),
   })

@@ -14,13 +14,13 @@ export function GeneralSettingsPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    getRefreshInterval().then(res => setInterval(res.interval.toString())).catch(console.error)
+    getRefreshInterval().then(res => setInterval(res.interval)).catch(console.error)
   }, [])
 
   const handleSaveInterval = async () => {
     setSaving(true)
     try {
-      await setRefreshInterval(parseInt(interval))
+      await setRefreshInterval(interval)
     } catch (err) {
       console.error(err)
       alert('Failed to save interval')
