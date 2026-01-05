@@ -1,6 +1,6 @@
 {
   "name": "eratemanager",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Energy Rate Manager - Go backend for electricity rate parsing and serving",
   "repository": {
