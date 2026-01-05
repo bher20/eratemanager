@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { LoadingSpinner } from '@/components/Loading'
 import { Button } from '@/components/Button'
 import { Select } from '@/components/Select'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Navigate } from 'react-router-dom'
 
@@ -14,9 +14,14 @@ export function UsersPage() {
   const [roles, setRoles] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [newUser, setNewUser] = useState({ username: '', password: '', email: '', role: '' })
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [newUser, setNewUser] = useState({ username: '', firstName: '', lastName: '', password: '', email: '', role: '' })
+  const [inviteUser, setInviteUser] = useState({ firstName: '', lastName: '', email: '', role: '' })
   const [error, setError] = useState('')
-  const { checkPermission } = useAuth()
+  const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null)
+  const { checkPermission, token } = useAuth()
 
   if (!checkPermission('users', 'read')) {
     return <Navigate to="/" replace />
@@ -33,6 +38,7 @@ export function UsersPage() {
       setRoles(rolesData)
       if (rolesData.length > 0) {
         setNewUser(prev => ({ ...prev, role: rolesData[0] }))
+        setInviteUser(prev => ({ ...prev, role: rolesData[0] }))
       }
     } catch (error) {
       console.error('Failed to load data', error)
@@ -45,12 +51,45 @@ export function UsersPage() {
     e.preventDefault()
     setError('')
     try {
-      await createUser(newUser.username, newUser.password, newUser.email, newUser.role)
+      await createUser(newUser.username, newUser.firstName, newUser.lastName, newUser.password, newUser.email, newUser.role)
       setIsCreateModalOpen(false)
-      setNewUser({ username: '', password: '', email: '', role: roles[0] || '' })
+      setNewUser({ username: '', firstName: '', lastName: '', password: '', email: '', role: roles[0] || '' })
       loadData() // Reload list
     } catch (err: any) {
       setError(err.message || 'Failed to create user')
+    }
+  }
+
+  const handleInviteUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setInviteSuccess(false)
+    try {
+      const res = await fetch('/auth/users', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          username: inviteUser.email.split('@')[0], // Simple username generation
+          first_name: inviteUser.firstName,
+          last_name: inviteUser.lastName,
+          email: inviteUser.email,
+          role: inviteUser.role,
+          invite: true // Flag to use invitation flow
+        })
+      })
+      if (!res.ok) throw new Error('Failed to invite user')
+      setInviteSuccess(true)
+      setInviteUser({ firstName: '', lastName: '', email: '', role: roles[0] || '' })
+      setTimeout(() => {
+        setIsInviteModalOpen(false)
+        setInviteSuccess(false)
+        loadData() // Reload list
+      }, 2000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to invite user')
     }
   }
 
@@ -72,16 +111,63 @@ export function UsersPage() {
     }
   }
 
+  const handleResendInvitation = async (userId: string) => {
+    setResendingInvite(userId)
+    try {
+      const res = await fetch(`/auth/users/${userId}/resend-invitation`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to resend invitation')
+      }
+      // Show success briefly
+      setTimeout(() => setResendingInvite(null), 2000)
+    } catch (error: any) {
+      console.error('Failed to resend invitation', error)
+      alert(error.message || 'Failed to resend invitation')
+      setResendingInvite(null)
+    }
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-        <Button onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
+        <div className="relative">
+          <Button onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New User
+            <ChevronDown className="ml-2 h-4 w-4" />
+          </Button>
+          {isDropdownOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-background border border-border z-10">
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    setIsInviteModalOpen(true)
+                    setIsDropdownOpen(false)
+                  }}
+                  className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
+                >
+                  Invite User
+                </button>
+                <button
+                  onClick={() => {
+                    setIsCreateModalOpen(true)
+                    setIsDropdownOpen(false)
+                  }}
+                  className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
+                >
+                  Create User
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -99,6 +185,7 @@ export function UsersPage() {
                   <th className="p-4 text-left font-medium">Role</th>
                   <th className="p-4 text-left font-medium">Skip Verification</th>
                   <th className="p-4 text-left font-medium">Created At</th>
+                  <th className="p-4 text-left font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,11 +215,23 @@ export function UsersPage() {
                     <td className="p-4 text-muted-foreground">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
+                    <td className="p-4">
+                      {!user.onboarding_completed && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleResendInvitation(user.id)}
+                          disabled={resendingInvite === user.id}
+                        >
+                          {resendingInvite === user.id ? '✓ Sent' : 'Resend Invite'}
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-4 text-center text-muted-foreground">
+                    <td colSpan={6} className="p-4 text-center text-muted-foreground">
                       No users found
                     </td>
                   </tr>
@@ -171,6 +270,24 @@ export function UsersPage() {
                 />
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-medium">First Name</label>
+                <input
+                  type="text"
+                  value={newUser.firstName}
+                  onChange={e => setNewUser({ ...newUser, firstName: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Last Name</label>
+                <input
+                  type="text"
+                  value={newUser.lastName}
+                  onChange={e => setNewUser({ ...newUser, lastName: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Email <span className="text-red-500">*</span></label>
                 <input
                   type="email"
@@ -204,6 +321,81 @@ export function UsersPage() {
                 </Button>
                 <Button type="submit">
                   Create User
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-background p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Invite User</h2>
+              <button onClick={() => setIsInviteModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            {error && (
+              <div className="mb-4 rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            {inviteSuccess && (
+              <div className="mb-4 rounded-md bg-green-50 text-green-700 p-3 text-sm">
+                Invitation sent successfully!
+              </div>
+            )}
+
+            <form onSubmit={handleInviteUser} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Email Address <span className="text-red-500">*</span></label>
+                <input
+                  type="email"
+                  required
+                  value={inviteUser.email}
+                  onChange={e => setInviteUser({ ...inviteUser, email: e.target.value })}
+                  placeholder="colleague@example.com"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">First Name</label>
+                <input
+                  type="text"
+                  value={inviteUser.firstName}
+                  onChange={e => setInviteUser({ ...inviteUser, firstName: e.target.value })}
+                  placeholder="John"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Last Name</label>
+                <input
+                  type="text"
+                  value={inviteUser.lastName}
+                  onChange={e => setInviteUser({ ...inviteUser, lastName: e.target.value })}
+                  placeholder="Doe"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Role</label>
+                <Select
+                  options={roles.map(r => ({ value: r, label: r }))}
+                  value={inviteUser.role}
+                  onChange={e => setInviteUser({ ...inviteUser, role: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button type="button" variant="outline" onClick={() => setIsInviteModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={inviteSuccess}>
+                  {inviteSuccess ? 'Sent!' : 'Send Invitation'}
                 </Button>
               </div>
             </form>

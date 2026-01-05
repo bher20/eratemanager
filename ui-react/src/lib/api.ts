@@ -160,10 +160,10 @@ export async function setRefreshInterval(interval: string): Promise<void> {
   })
 }
 
-export async function createUser(username: string, password: string, email: string, role: string): Promise<User> {
+export async function createUser(username: string, firstName: string, lastName: string, password: string, email: string, role: string): Promise<User> {
   return fetchApi<User>('/auth/users', {
     method: 'POST',
-    body: JSON.stringify({ username, password, email, role }),
+    body: JSON.stringify({ username, first_name: firstName, last_name: lastName, password, email, role }),
   })
 }
 
