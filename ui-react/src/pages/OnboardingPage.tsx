@@ -6,6 +6,7 @@ import { Button } from '@/components/Button'
 
 export function OnboardingPage({ onComplete }: { onComplete?: () => void }) {
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
@@ -24,7 +25,7 @@ export function OnboardingPage({ onComplete }: { onComplete?: () => void }) {
     setLoading(true)
 
     try {
-      await setupAdmin(username, password)
+      await setupAdmin(username, password, email)
       if (onComplete) {
         onComplete()
       }
@@ -61,6 +62,17 @@ export function OnboardingPage({ onComplete }: { onComplete?: () => void }) {
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Email</label>
+              <input
+                id="email"
+                type="email"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>

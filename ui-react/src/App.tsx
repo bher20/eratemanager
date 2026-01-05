@@ -7,14 +7,32 @@ import {
   LoginPage, 
   TokensPage, 
   OnboardingPage,
-  ProfilePage
+  ProfilePage,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  VerifyEmailPage,
+  EmailVerificationRequiredPage
 } from '@/pages'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { AuthProvider } from '@/context/AuthContext'
+import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { RequireAuth } from '@/components/RequireAuth'
 import { useEffect, useState } from 'react'
 import { getAuthStatus } from '@/lib/api'
 import { LoadingSpinner } from '@/components/Loading'
+
+function RequireEmailVerification({ children }: { children: JSX.Element }) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  if (user && user.role !== 'admin' && !user.email_verified && !user.skip_email_verification) {
+    return <Navigate to="/email-verification-required" replace />
+  }
+
+  return children
+}
 
 function App() {
   const [initialized, setInitialized] = useState<boolean | null>(null)
@@ -50,6 +68,14 @@ function App() {
           element={initialized ? <Navigate to="/login" /> : <OnboardingPage onComplete={() => setInitialized(true)} />} 
         />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/email-verification-required" element={
+          <RequireAuth>
+            <EmailVerificationRequiredPage />
+          </RequireAuth>
+        } />
         <Route
           path="*"
           element={
@@ -57,18 +83,20 @@ function App() {
               <Navigate to="/onboarding" />
             ) : (
               <RequireAuth>
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<DashboardPage />} />
-                    <Route path="/electric" element={<ElectricPage />} />
-                    <Route path="/water" element={<WaterPage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/tokens" element={<TokensPage />} />
-                    
-                    {/* Settings Routes */}
-                    <Route path="/settings" element={<SettingsPage />} />
-                  </Routes>
-                </Layout>
+                <RequireEmailVerification>
+                  <Layout>
+                    <Routes>
+                      <Route path="/" element={<DashboardPage />} />
+                      <Route path="/electric" element={<ElectricPage />} />
+                      <Route path="/water" element={<WaterPage />} />
+                      <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/tokens" element={<TokensPage />} />
+                      
+                      {/* Settings Routes */}
+                      <Route path="/settings" element={<SettingsPage />} />
+                    </Routes>
+                  </Layout>
+                </RequireEmailVerification>
               </RequireAuth>
             )
           }

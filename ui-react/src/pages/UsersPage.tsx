@@ -14,7 +14,7 @@ export function UsersPage() {
   const [roles, setRoles] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: '' })
+  const [newUser, setNewUser] = useState({ username: '', password: '', email: '', role: '' })
   const [error, setError] = useState('')
   const { checkPermission } = useAuth()
 
@@ -45,9 +45,9 @@ export function UsersPage() {
     e.preventDefault()
     setError('')
     try {
-      await createUser(newUser.username, newUser.password, newUser.role)
+      await createUser(newUser.username, newUser.password, newUser.email, newUser.role)
       setIsCreateModalOpen(false)
-      setNewUser({ username: '', password: '', role: roles[0] || '' })
+      setNewUser({ username: '', password: '', email: '', role: roles[0] || '' })
       loadData() // Reload list
     } catch (err: any) {
       setError(err.message || 'Failed to create user')
@@ -56,10 +56,19 @@ export function UsersPage() {
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
-      await updateUser(userId, newRole)
+      await updateUser(userId, { role: newRole })
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u))
     } catch (error) {
       console.error('Failed to update role', error)
+    }
+  }
+
+  const handleSkipVerificationChange = async (userId: string, skip: boolean) => {
+    try {
+      await updateUser(userId, { skip_email_verification: skip })
+      setUsers(users.map(u => u.id === userId ? { ...u, skip_email_verification: skip } : u))
+    } catch (error) {
+      console.error('Failed to update skip verification', error)
     }
   }
 
@@ -86,7 +95,9 @@ export function UsersPage() {
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="p-4 text-left font-medium">Username</th>
+                  <th className="p-4 text-left font-medium">Email</th>
                   <th className="p-4 text-left font-medium">Role</th>
+                  <th className="p-4 text-left font-medium">Skip Verification</th>
                   <th className="p-4 text-left font-medium">Created At</th>
                 </tr>
               </thead>
@@ -94,6 +105,7 @@ export function UsersPage() {
                 {users.map((user) => (
                   <tr key={user.id} className="border-b last:border-0">
                     <td className="p-4 font-medium">{user.username}</td>
+                    <td className="p-4">{user.email}</td>
                     <td className="p-4">
                       <select
                         value={user.role}
@@ -104,6 +116,14 @@ export function UsersPage() {
                           <option key={role} value={role}>{role}</option>
                         ))}
                       </select>
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={user.skip_email_verification}
+                        onChange={(e) => handleSkipVerificationChange(user.id, e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
                     </td>
                     <td className="p-4 text-muted-foreground">
                       {new Date(user.created_at).toLocaleDateString()}
@@ -141,7 +161,7 @@ export function UsersPage() {
 
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Username</label>
+                <label className="text-sm font-medium">Username <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   required
@@ -151,7 +171,17 @@ export function UsersPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Password</label>
+                <label className="text-sm font-medium">Email <span className="text-red-500">*</span></label>
+                <input
+                  type="email"
+                  required
+                  value={newUser.email}
+                  onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Password <span className="text-red-500">*</span></label>
                 <input
                   type="password"
                   required

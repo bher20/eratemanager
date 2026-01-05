@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { login as apiLogin } from '@/lib/api'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card'
@@ -76,6 +76,11 @@ export function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Logging in...' : 'Login'}
             </Button>
+            <div className="text-center text-sm">
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Forgot Password?
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

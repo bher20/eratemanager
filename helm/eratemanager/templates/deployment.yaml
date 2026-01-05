@@ -30,6 +30,12 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.app.port }}"
+            - name: PUBLIC_URL
+              {{- if .Values.gateway.enabled }}
+              value: "https://{{ .Values.gateway.hostname }}"
+              {{- else }}
+              value: {{ .Values.app.publicURL | quote }}
+              {{- end }}
             - name: ERATEMANAGER_DB_DRIVER
               value: {{ .Values.db.driver | quote }}
             - name: ERATEMANAGER_DB_DSN
@@ -42,5 +48,9 @@ spec:
               mountPath: {{ .Values.persistence.mountPath }}
       volumes:
         - name: data
+        {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "eratemanager.fullname" . }}-data
+        {{- else }}
+          emptyDir: {}
+        {{- end }}

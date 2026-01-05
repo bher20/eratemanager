@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/bher20/eratemanager/internal/notification"
 	"github.com/bher20/eratemanager/internal/storage"
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -16,12 +18,14 @@ import (
 )
 
 type Service struct {
-	storage  storage.Storage
-	enforcer *casbin.Enforcer
-	adapter  *Adapter
+	storage   storage.Storage
+	enforcer  *casbin.Enforcer
+	adapter   *Adapter
+	notifier  *notification.Service
+	publicURL string
 }
 
-func NewService(s storage.Storage) (*Service, error) {
+func NewService(s storage.Storage, n *notification.Service, publicURL string) (*Service, error) {
 	// Initialize Casbin model
 	m, err := model.NewModelFromString(`
 [request_definition]
@@ -93,7 +97,13 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 		}
 	}
 
-	return &Service{storage: s, enforcer: e, adapter: adapter}, nil
+	return &Service{
+		storage:   s,
+		enforcer:  e,
+		adapter:   adapter,
+		notifier:  n,
+		publicURL: publicURL,
+	}, nil
 }
 
 func (s *Service) Authenticate(ctx context.Context, username, password string) (*storage.User, error) {
@@ -110,7 +120,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return u, nil
 }
 
-func (s *Service) Register(ctx context.Context, username, password, role string) (*storage.User, error) {
+func (s *Service) Register(ctx context.Context, username, password, email, role string) (*storage.User, error) {
 	// Check if user exists
 	existing, err := s.storage.GetUserByUsername(ctx, username)
 	if err != nil {
@@ -120,18 +130,33 @@ func (s *Service) Register(ctx context.Context, username, password, role string)
 		return nil, errors.New("user already exists")
 	}
 
+	// Check if email exists
+	if email != "" {
+		existingEmail, err := s.storage.GetUserByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+		if existingEmail != nil {
+			return nil, errors.New("email already in use")
+		}
+	} else {
+		return nil, errors.New("email is required")
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
 	u := storage.User{
-		ID:           uuid.New().String(),
-		Username:     username,
-		PasswordHash: string(hash),
-		Role:         role,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:            uuid.New().String(),
+		Username:      username,
+		Email:         email,
+		EmailVerified: false,
+		PasswordHash:  string(hash),
+		Role:          role,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	if err := s.storage.CreateUser(ctx, u); err != nil {
@@ -140,6 +165,13 @@ func (s *Service) Register(ctx context.Context, username, password, role string)
 
 	// Add user to role in Casbin
 	s.enforcer.AddGroupingPolicy(u.ID, role)
+
+	// Send verification email
+	go func() {
+		if err := s.SendVerificationEmail(context.Background(), u.ID, u.Email); err != nil {
+			log.Printf("failed to send verification email to %s: %v", u.Email, err)
+		}
+	}()
 
 	return &u, nil
 }
@@ -243,4 +275,212 @@ func (s *Service) CreateRole(role string, policies []Policy) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func (s *Service) UpdateUser(ctx context.Context, id string, email, role string, skipVerification *bool) (*storage.User, error) {
+	user, err := s.storage.GetUser(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	changed := false
+	emailChanged := false
+
+	if email != "" && email != user.Email {
+		// Check if email is taken
+		existing, err := s.storage.GetUserByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil && existing.ID != id {
+			return nil, errors.New("email already in use")
+		}
+		user.Email = email
+		user.EmailVerified = false
+		emailChanged = true
+		changed = true
+	}
+
+	if role != "" && role != user.Role {
+		// Remove old role policy
+		s.enforcer.RemoveGroupingPolicy(user.ID, user.Role)
+		user.Role = role
+		// Add new role policy
+		s.enforcer.AddGroupingPolicy(user.ID, role)
+		changed = true
+	}
+
+	if skipVerification != nil && *skipVerification != user.SkipEmailVerification {
+		user.SkipEmailVerification = *skipVerification
+		changed = true
+	}
+
+	if changed {
+		user.UpdatedAt = time.Now()
+		if err := s.storage.UpdateUser(ctx, *user); err != nil {
+			return nil, err
+		}
+	}
+
+	if emailChanged {
+		go func() {
+			if err := s.SendVerificationEmail(context.Background(), user.ID, user.Email); err != nil {
+				log.Printf("failed to send verification email to %s: %v", user.Email, err)
+			}
+		}()
+	}
+
+	return user, nil
+}
+
+func (s *Service) SendVerificationEmail(ctx context.Context, userID, email string) error {
+	expiresAt := time.Now().Add(24 * time.Hour)
+	_, rawToken, err := s.CreateToken(ctx, userID, "email-verification", "verification", &expiresAt)
+	if err != nil {
+		return err
+	}
+
+	link := fmt.Sprintf("%s/ui/verify-email?token=%s", s.publicURL, rawToken)
+	return s.sendTemplateEmail(ctx, email, "Verify your email address", "Verify Email Address", "verify your email address", link)
+}
+
+func (s *Service) VerifyEmail(ctx context.Context, rawToken string) error {
+	token, err := s.ValidateToken(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+
+	if token.Name != "email-verification" {
+		return errors.New("invalid token type")
+	}
+
+	user, err := s.storage.GetUser(ctx, token.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	user.EmailVerified = true
+	user.UpdatedAt = time.Now()
+	
+	if err := s.storage.UpdateUser(ctx, *user); err != nil {
+		return err
+	}
+
+	// Delete token
+	return s.storage.DeleteToken(ctx, token.ID)
+}
+
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	user, err := s.storage.GetUserByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		// Return nil to avoid enumerating users
+		return nil
+	}
+
+	if !user.EmailVerified {
+		return errors.New("email not verified")
+	}
+
+	// Create a reset token
+	expiresAt := time.Now().Add(1 * time.Hour)
+	_, rawToken, err := s.CreateToken(ctx, user.ID, "password-reset", "reset", &expiresAt)
+	if err != nil {
+		return err
+	}
+
+	link := fmt.Sprintf("%s/ui/reset-password?token=%s", s.publicURL, rawToken)
+	return s.sendTemplateEmail(ctx, user.Email, "Password Reset Request", "Reset Password", "reset your password", link)
+}
+
+func (s *Service) sendTemplateEmail(ctx context.Context, to, subject, title, actionText, link string) error {
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 0; }
+  .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .header { background-color: #2563eb; color: #ffffff; padding: 20px; text-align: center; }
+  .content { padding: 30px 20px; }
+  .button { display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+  .button:visited { color: #ffffff !important; }
+  .button:hover { background-color: #1d4ed8; color: #ffffff !important; }
+  .footer { padding: 20px; text-align: center; font-size: 0.8em; color: #666; background-color: #f9fafb; }
+  .link-text { word-break: break-all; color: #2563eb; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1 style="margin:0; font-size: 24px;">eRateManager</h1>
+  </div>
+  <div class="content">
+    <h2 style="margin-top:0; color: #2563eb; text-align: center;">%s</h2>
+    <p style="text-align: center;">Please click the button below to %s:</p>
+    <div style="text-align: center;">
+      <a href="%s" class="button" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block; font-weight: bold;">%s</a>
+    </div>
+    <p>Or copy and paste this link into your browser:</p>
+    <p><a href="%s" class="link-text">%s</a></p>
+  </div>
+  <div class="footer">
+    <p>If you did not request this, please ignore this email.</p>
+  </div>
+</div>
+</body>
+</html>
+`, title, actionText, link, title, link, link)
+
+	return s.notifier.SendEmail(ctx, to, subject, htmlBody)
+}
+
+func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	// Validate token
+	token, err := s.ValidateToken(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	
+	if token.Name != "password-reset" {
+		return errors.New("invalid token type")
+	}
+
+	// Get user
+	user, err := s.storage.GetUser(ctx, token.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	// Hash new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// Update user
+	user.PasswordHash = string(hash)
+	user.UpdatedAt = time.Now()
+	if err := s.storage.UpdateUser(ctx, *user); err != nil {
+		return err
+	}
+
+	// Delete the used token
+	if err := s.storage.DeleteToken(ctx, token.ID); err != nil {
+		log.Printf("failed to delete used reset token: %v", err)
+	}
+
+	return nil
 }

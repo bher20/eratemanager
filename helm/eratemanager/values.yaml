@@ -43,6 +43,7 @@ service:
 
 app:
   port: 8000
+  publicURL: "http://localhost:8000"
 
 # Providers are now discovered dynamically via the /providers API endpoint.
 # No need to list them here - the helm chart will query the running application.

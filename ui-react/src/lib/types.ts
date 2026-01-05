@@ -76,6 +76,9 @@ export interface ApiError {
 export interface User {
   id: string
   username: string
+  email: string
+  email_verified: boolean
+  skip_email_verification: boolean
   role: string
   created_at: string
   updated_at: string
