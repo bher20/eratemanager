@@ -7,6 +7,7 @@ interface AuthContextType {
   token: string | null
   login: (token: string, user: User) => void
   logout: () => void
+  refreshUser: () => Promise<void>
   isAuthenticated: boolean
   isLoading: boolean
   checkPermission: (resource: string, action: string) => boolean
@@ -43,12 +44,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  const refreshUser = async () => {
+    if (!token) return
+    try {
+      const response = await fetch('/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const updatedUser = await response.json()
+        localStorage.setItem('user', JSON.stringify(updatedUser))
+        setUser(updatedUser)
+      }
+    } catch (error) {
+      console.error('Failed to refresh user', error)
+    }
+  }
+
   const checkPermission = (resource: string, action: string) => {
     return hasPermission(user, resource, action)
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, isLoading, checkPermission }}>
+    <AuthContext.Provider value={{ user, token, login, logout, refreshUser, isAuthenticated: !!token, isLoading, checkPermission }}>
       {children}
     </AuthContext.Provider>
   )

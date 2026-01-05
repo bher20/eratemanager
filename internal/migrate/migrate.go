@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations
 var embedMigrations embed.FS
 
 func configureGoose(driver string) error {
@@ -25,6 +25,13 @@ func configureGoose(driver string) error {
 		return goose.SetDialect("postgres")
 	}
 	return fmt.Errorf("unsupported driver for goose: %s", driver)
+}
+
+func getMigrationDir(driver string) string {
+	if driver == "postgres" || driver == "pgx" || driver == "postgrespool" {
+		return "migrations/postgres"
+	}
+	return "migrations/sqlite"
 }
 
 func openDB(driver, dsn string) (*sql.DB, error) {
@@ -55,7 +62,7 @@ func Up(ctx context.Context, driver, dsn string) error {
 		return err
 	}
 	defer db.Close()
-	return goose.UpContext(ctx, db, "migrations")
+	return goose.UpContext(ctx, db, getMigrationDir(driver))
 }
 
 func Down(ctx context.Context, driver, dsn string) error {
@@ -67,7 +74,7 @@ func Down(ctx context.Context, driver, dsn string) error {
 		return err
 	}
 	defer db.Close()
-	return goose.DownContext(ctx, db, "migrations")
+	return goose.DownContext(ctx, db, getMigrationDir(driver))
 }
 
 func Status(ctx context.Context, driver, dsn string) error {
@@ -79,5 +86,5 @@ func Status(ctx context.Context, driver, dsn string) error {
 		return err
 	}
 	defer db.Close()
-	return goose.Status(db, "migrations")
+	return goose.Status(db, getMigrationDir(driver))
 }

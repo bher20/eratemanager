@@ -22,6 +22,8 @@ db:
   driver: "postgrespool"
   # DSN is dynamically generated using the postgresql auth values if not provided here.
   # dsn: ""
+  # Run database migrations on startup
+  autoMigrate: true
 
 cronWorker:
   # Runs the in-app cron worker as a long-lived Deployment. It uses intervalSeconds
@@ -43,6 +45,7 @@ service:
 
 app:
   port: 8000
+  publicURL: "http://localhost:8000"
 
 # Providers are now discovered dynamically via the /providers API endpoint.
 # No need to list them here - the helm chart will query the running application.

@@ -112,10 +112,10 @@ export async function getAuthStatus(): Promise<AuthStatus> {
   return fetchApi<AuthStatus>('/auth/status')
 }
 
-export async function createAdmin(username: string, password: string): Promise<void> {
+export async function createAdmin(username: string, password: string, email: string): Promise<void> {
   await fetchApi('/auth/setup', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, email }),
   })
 }
 export const setupAdmin = createAdmin
@@ -160,17 +160,48 @@ export async function setRefreshInterval(interval: string): Promise<void> {
   })
 }
 
-export async function createUser(username: string, password: string, role: string): Promise<User> {
+export async function createUser(username: string, password: string, email: string, role: string): Promise<User> {
   return fetchApi<User>('/auth/users', {
     method: 'POST',
-    body: JSON.stringify({ username, password, role }),
+    body: JSON.stringify({ username, password, email, role }),
   })
 }
 
-export async function updateUser(id: string, role: string): Promise<User> {
+export async function updateUser(id: string, updates: { role?: string; skip_email_verification?: boolean }): Promise<User> {
   return fetchApi<User>(`/auth/users/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ role }),
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function updateProfile(email: string): Promise<User> {
+  return fetchApi<User>('/auth/me', {
+    method: 'PUT',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  return fetchApi<void>('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export async function sendVerificationEmail(): Promise<void> {
+  // This endpoint doesn't exist yet in the backend, but the frontend expects it.
+  // For now, we can trigger it by updating the email to the same value, 
+  // but ideally we should have a dedicated endpoint.
+  // However, looking at the backend code, updating email triggers verification email.
+  // So we can just call updateProfile with the current email.
+  // But wait, the backend only sends email if email CHANGED.
+  // We need a dedicated endpoint or a way to force resend.
+  // Let's add a dedicated endpoint in the backend first?
+  // Or just use a hack for now?
+  // The user asked for "resend verification email".
+  // Let's add the endpoint to the backend.
+  return fetchApi<void>('/auth/resend-verification', {
+    method: 'POST',
   })
 }
 
@@ -211,5 +242,19 @@ export async function testEmailConfig(config: EmailConfig, to: string): Promise<
   return fetchApi<void>('/api/v1/settings/email/test', {
     method: 'POST',
     body: JSON.stringify({ config, to }),
+  })
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  return fetchApi<void>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  return fetchApi<void>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
   })
 }

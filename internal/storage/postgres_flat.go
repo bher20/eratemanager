@@ -280,40 +280,58 @@ func (s *PostgresStorage) SetSetting(ctx context.Context, key, value string) err
 
 func (s *PostgresStorage) CreateUser(ctx context.Context, user User) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, user.ID, user.Username, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt)
+		INSERT INTO users (id, username, email, email_verified, password_hash, role, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, user.ID, user.Username, user.Email, user.EmailVerified, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt)
 	return err
 }
 
 func (s *PostgresStorage) GetUser(ctx context.Context, id string) (*User, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE id = $1`, id)
 	var u User
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var email sql.NullString
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	u.Email = email.String
 	return &u, nil
 }
 
 func (s *PostgresStorage) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE username = $1`, username)
 	var u User
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var email sql.NullString
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	u.Email = email.String
+	return &u, nil
+}
+
+func (s *PostgresStorage) GetUserByEmail(ctx context.Context, emailAddr string) (*User, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE email = $1`, emailAddr)
+	var u User
+	var email sql.NullString
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	u.Email = email.String
 	return &u, nil
 }
 
 func (s *PostgresStorage) UpdateUser(ctx context.Context, user User) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE users SET username = $1, password_hash = $2, role = $3, updated_at = $4 WHERE id = $5
-	`, user.Username, user.PasswordHash, user.Role, user.UpdatedAt, user.ID)
+		UPDATE users SET username = $1, email = $2, email_verified = $3, password_hash = $4, role = $5, updated_at = $6 WHERE id = $7
+	`, user.Username, user.Email, user.EmailVerified, user.PasswordHash, user.Role, user.UpdatedAt, user.ID)
 	return err
 }
 
@@ -323,7 +341,7 @@ func (s *PostgresStorage) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (s *PostgresStorage) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users`)
 	if err != nil {
 		return nil, err
 	}
@@ -332,9 +350,11 @@ func (s *PostgresStorage) ListUsers(ctx context.Context) ([]User, error) {
 	var out []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		var email sql.NullString
+		if err := rows.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
+		u.Email = email.String
 		out = append(out, u)
 	}
 	return out, rows.Err()

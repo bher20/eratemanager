@@ -288,37 +288,58 @@ func (s *SQLiteStorage) SetSetting(ctx context.Context, key, value string) error
 
 func (s *SQLiteStorage) CreateUser(ctx context.Context, user User) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, user.ID, user.Username, user.PasswordHash, user.Role, user.CreatedAt.Format(time.RFC3339), user.UpdatedAt.Format(time.RFC3339))
+		INSERT INTO users (id, username, email, email_verified, password_hash, role, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, user.ID, user.Username, user.Email, user.EmailVerified, user.PasswordHash, user.Role, user.CreatedAt.Format(time.RFC3339), user.UpdatedAt.Format(time.RFC3339))
 	return err
 }
 
 func (s *SQLiteStorage) GetUser(ctx context.Context, id string) (*User, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE id = ?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE id = ?`, id)
 	var u User
+	var email sql.NullString
 	var createdAt, updatedAt string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	u.Email = email.String
 	u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	u.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	return &u, nil
 }
 
 func (s *SQLiteStorage) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users WHERE username = ?`, username)
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE username = ?`, username)
 	var u User
+	var email sql.NullString
 	var createdAt, updatedAt string
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	u.Email = email.String
+	u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	u.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &u, nil
+}
+
+func (s *SQLiteStorage) GetUserByEmail(ctx context.Context, emailAddr string) (*User, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users WHERE email = ?`, emailAddr)
+	var u User
+	var email sql.NullString
+	var createdAt, updatedAt string
+	if err := row.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	u.Email = email.String
 	u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	u.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	return &u, nil
@@ -326,8 +347,8 @@ func (s *SQLiteStorage) GetUserByUsername(ctx context.Context, username string) 
 
 func (s *SQLiteStorage) UpdateUser(ctx context.Context, user User) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE users SET username = ?, password_hash = ?, role = ?, updated_at = ? WHERE id = ?
-	`, user.Username, user.PasswordHash, user.Role, user.UpdatedAt.Format(time.RFC3339), user.ID)
+		UPDATE users SET username = ?, email = ?, email_verified = ?, password_hash = ?, role = ?, updated_at = ? WHERE id = ?
+	`, user.Username, user.Email, user.EmailVerified, user.PasswordHash, user.Role, user.UpdatedAt.Format(time.RFC3339), user.ID)
 	return err
 }
 
@@ -337,7 +358,7 @@ func (s *SQLiteStorage) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (s *SQLiteStorage) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, password_hash, role, created_at, updated_at FROM users`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, email, email_verified, password_hash, role, created_at, updated_at FROM users`)
 	if err != nil {
 		return nil, err
 	}
@@ -346,10 +367,12 @@ func (s *SQLiteStorage) ListUsers(ctx context.Context) ([]User, error) {
 	var out []User
 	for rows.Next() {
 		var u User
+		var email sql.NullString
 		var createdAt, updatedAt string
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &email, &u.EmailVerified, &u.PasswordHash, &u.Role, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
+		u.Email = email.String
 		u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		u.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 		out = append(out, u)

@@ -182,6 +182,17 @@ func (m *MemoryStorage) GetUserByUsername(ctx context.Context, username string) 
 	return nil, nil
 }
 
+func (m *MemoryStorage) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, u := range m.users {
+		if u.Email == email {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *MemoryStorage) UpdateUser(ctx context.Context, user User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
