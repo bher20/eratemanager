@@ -1,6 +1,5 @@
 ---
 "eratemanager": minor
-"eratemanager-ui": minor
 ---
 
 - Implement admin onboarding wizard for first-time login.
