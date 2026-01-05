@@ -291,6 +291,66 @@ func NewMux() *http.ServeMux {
 			w.Write([]byte(`{"message": "Password successfully reset."}`))
 		})
 
+		mux.HandleFunc("/auth/validate-setup-token", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				http.Error(w, "Token required", http.StatusBadRequest)
+				return
+			}
+
+			user, err := authSvc.ValidateSetupToken(r.Context(), token)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"email":      user.Email,
+				"role":       user.Role,
+				"username":   user.Username,
+				"first_name": user.FirstName,
+				"last_name":  user.LastName,
+			})
+		})
+
+		mux.HandleFunc("/auth/setup-account", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				Token       string `json:"token"`
+				Username    string `json:"username"`
+				FirstName   string `json:"first_name"`
+				LastName    string `json:"last_name"`
+				NewPassword string `json:"new_password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request", http.StatusBadRequest)
+				return
+			}
+			
+			if req.Token == "" || req.Username == "" || req.NewPassword == "" {
+				http.Error(w, "Token, username and password required", http.StatusBadRequest)
+				return
+			}
+
+			if err := authSvc.SetupInvitedAccount(r.Context(), req.Token, req.Username, req.FirstName, req.LastName, req.NewPassword); err != nil {
+				http.Error(w, "Account setup failed: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"message": "Account successfully set up."}`))
+		})
+
+
 		mux.HandleFunc("/auth/verify-email", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -490,17 +550,27 @@ func NewMux() *http.ServeMux {
 				}
 
 				var req struct {
-					Username string `json:"username"`
-					Password string `json:"password"`
-					Email    string `json:"email"`
-					Role     string `json:"role"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, "Invalid request body", http.StatusBadRequest)
-					return
-				}
+				Username  string `json:"username"`
+				FirstName string `json:"first_name"`
+				LastName  string `json:"last_name"`
+				Password  string `json:"password"`
+				Email     string `json:"email"`
+				Role      string `json:"role"`
+				Invite    bool   `json:"invite"` // If true, send invitation email instead of password
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
 
-				user, err := authSvc.Register(r.Context(), req.Username, req.Password, req.Email, req.Role)
+			var user *storage.User
+			if req.Invite || req.Password == "" {
+				// Use invitation flow (random password + invitation email)
+				user, err = authSvc.RegisterInvitedUser(r.Context(), req.Username, req.FirstName, req.LastName, req.Email, req.Role)
+					// Use standard registration flow
+					user, err = authSvc.Register(r.Context(), req.Username, req.Password, req.Email, req.Role)
+				}
+				
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -582,6 +652,60 @@ func NewMux() *http.ServeMux {
 			}
 
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		})))
+
+		mux.Handle("/auth/users/{id}/resend-invitation", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			token, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			allowed, err := authSvc.Enforce(token.UserID, "users", "write")
+			if err != nil {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+			if !allowed {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			// Extract user ID from path
+			pathParts := strings.Split(r.URL.Path, "/")
+			if len(pathParts) < 4 {
+				http.Error(w, "Invalid request", http.StatusBadRequest)
+				return
+			}
+			userID := pathParts[3]
+
+			// Get user details
+			user, err := st.GetUser(r.Context(), userID)
+			if err != nil {
+				http.Error(w, "User not found", http.StatusNotFound)
+				return
+			}
+
+			// Only resend if user hasn't completed onboarding
+			if user.OnboardingCompleted {
+				http.Error(w, "User has already completed onboarding", http.StatusBadRequest)
+				return
+			}
+
+			// Send invitation email
+			if err := authSvc.SendInvitationEmail(r.Context(), user.ID, user.Email, user.Role); err != nil {
+				http.Error(w, "Failed to send invitation: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"message": "Invitation resent successfully"}`))
 		})))
 
 		mux.Handle("/auth/me", authSvc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

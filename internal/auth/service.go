@@ -121,6 +121,16 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 }
 
 func (s *Service) Register(ctx context.Context, username, password, email, role string) (*storage.User, error) {
+	return s.register(ctx, username, "", "", password, email, role, false)
+}
+
+func (s *Service) RegisterInvitedUser(ctx context.Context, username, firstName, lastName, email, role string) (*storage.User, error) {
+	// Generate a random password for invited users
+	randomPassword := uuid.New().String()
+	return s.register(ctx, username, firstName, lastName, randomPassword, email, role, true)
+}
+
+func (s *Service) register(ctx context.Context, username, firstName, lastName, password, email, role string, isInvite bool) (*storage.User, error) {
 	// Check if user exists
 	existing, err := s.storage.GetUserByUsername(ctx, username)
 	if err != nil {
@@ -151,6 +161,8 @@ func (s *Service) Register(ctx context.Context, username, password, email, role 
 	u := storage.User{
 		ID:            uuid.New().String(),
 		Username:      username,
+		FirstName:     firstName,
+		LastName:      lastName,
 		Email:         email,
 		EmailVerified: false,
 		PasswordHash:  string(hash),
@@ -166,10 +178,16 @@ func (s *Service) Register(ctx context.Context, username, password, email, role 
 	// Add user to role in Casbin
 	s.enforcer.AddGroupingPolicy(u.ID, role)
 
-	// Send verification email
+	// Send appropriate email
 	go func() {
-		if err := s.SendVerificationEmail(context.Background(), u.ID, u.Email); err != nil {
-			log.Printf("failed to send verification email to %s: %v", u.Email, err)
+		if isInvite {
+			if err := s.SendInvitationEmail(context.Background(), u.ID, u.Email, role); err != nil {
+				log.Printf("failed to send invitation email to %s: %v", u.Email, err)
+			}
+		} else {
+			if err := s.SendVerificationEmail(context.Background(), u.ID, u.Email); err != nil {
+				log.Printf("failed to send verification email to %s: %v", u.Email, err)
+			}
 		}
 	}()
 
@@ -352,13 +370,70 @@ func (s *Service) SendVerificationEmail(ctx context.Context, userID, email strin
 	return s.sendTemplateEmail(ctx, email, "Verify your email address", "Verify Email Address", "verify your email address", link)
 }
 
+func (s *Service) SendInvitationEmail(ctx context.Context, userID, email, role string) error {
+	expiresAt := time.Now().Add(72 * time.Hour) // 3 days for invitations
+	_, rawToken, err := s.CreateToken(ctx, userID, "account-setup", "verification", &expiresAt)
+	if err != nil {
+		return err
+	}
+
+	link := fmt.Sprintf("%s/ui/setup-account?token=%s", s.publicURL, rawToken)
+	
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 0; }
+  .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .header { background-color: #2563eb; color: #ffffff; padding: 20px; text-align: center; }
+  .content { padding: 30px 20px; }
+  .button { display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+  .button:visited { color: #ffffff !important; }
+  .button:hover { background-color: #1d4ed8; color: #ffffff !important; }
+  .footer { padding: 20px; text-align: center; font-size: 0.8em; color: #666; background-color: #f9fafb; }
+  .link-text { word-break: break-all; color: #2563eb; }
+  .info-box { background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 15px; margin: 20px 0; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1 style="margin:0; font-size: 24px;">eRateManager</h1>
+  </div>
+  <div class="content">
+    <h2 style="margin-top:0; color: #2563eb;">You've Been Invited!</h2>
+    <p>You have been invited to join <strong>eRateManager</strong> as a <strong>%s</strong>.</p>
+    <div class="info-box">
+      <p style="margin:0;"><strong>What's next?</strong></p>
+      <p style="margin:5px 0 0 0;">Click the button below to set up your account and create your password. This link will expire in 72 hours.</p>
+    </div>
+    <div style="text-align: center;">
+      <a href="%s" class="button" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block; font-weight: bold;">Set Up My Account</a>
+    </div>
+    <p>Or copy and paste this link into your browser:</p>
+    <p><a href="%s" class="link-text">%s</a></p>
+  </div>
+  <div class="footer">
+    <p>If you did not expect this invitation, please ignore this email or contact your administrator.</p>
+  </div>
+</div>
+</body>
+</html>
+`, role, link, link, link)
+
+	return s.notifier.SendEmail(ctx, email, "You've been invited to eRateManager", htmlBody)
+}
+
+
 func (s *Service) VerifyEmail(ctx context.Context, rawToken string) error {
 	token, err := s.ValidateToken(ctx, rawToken)
 	if err != nil {
 		return err
 	}
 
-	if token.Name != "email-verification" {
+	if token.Name != "email-verification" && token.Name != "account-setup" {
 		return errors.New("invalid token type")
 	}
 
@@ -456,7 +531,7 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword strin
 		return err
 	}
 	
-	if token.Name != "password-reset" {
+	if token.Name != "password-reset" && token.Name != "account-setup" {
 		return errors.New("invalid token type")
 	}
 
@@ -478,6 +553,12 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword strin
 	// Update user
 	user.PasswordHash = string(hash)
 	user.UpdatedAt = time.Now()
+	
+	// If this is an account setup token, also verify the email
+	if token.Name == "account-setup" {
+		user.EmailVerified = true
+	}
+	
 	if err := s.storage.UpdateUser(ctx, *user); err != nil {
 		return err
 	}
@@ -485,6 +566,84 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword strin
 	// Delete the used token
 	if err := s.storage.DeleteToken(ctx, token.ID); err != nil {
 		log.Printf("failed to delete used reset token: %v", err)
+	}
+
+	return nil
+}
+
+func (s *Service) ValidateSetupToken(ctx context.Context, rawToken string) (*storage.User, error) {
+	token, err := s.ValidateToken(ctx, rawToken)
+	if err != nil {
+		return nil, err
+	}
+	
+	if token.Name != "account-setup" {
+		return nil, errors.New("invalid token type")
+	}
+
+	user, err := s.storage.GetUser(ctx, token.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	return user, nil
+}
+
+func (s *Service) SetupInvitedAccount(ctx context.Context, rawToken, username, firstName, lastName, newPassword string) error {
+	// Validate token
+	token, err := s.ValidateToken(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	
+	if token.Name != "account-setup" {
+		return errors.New("invalid token type")
+	}
+
+	// Get user
+	user, err := s.storage.GetUser(ctx, token.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	// Check if new username is already taken (if different from current)
+	if username != user.Username {
+		existing, err := s.storage.GetUserByUsername(ctx, username)
+		if err != nil {
+			return err
+		}
+		if existing != nil && existing.ID != user.ID {
+			return errors.New("username already taken")
+		}
+	}
+
+	// Hash new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// Update user with new username, first/last name, password, and verify email
+	user.Username = username
+	user.FirstName = firstName
+	user.LastName = lastName
+	user.PasswordHash = string(hash)
+	user.EmailVerified = true
+	user.UpdatedAt = time.Now()
+	
+	if err := s.storage.UpdateUser(ctx, *user); err != nil {
+		return err
+	}
+
+	// Delete the used token
+	if err := s.storage.DeleteToken(ctx, token.ID); err != nil {
+		log.Printf("failed to delete used setup token: %v", err)
 	}
 
 	return nil

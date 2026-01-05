@@ -11,7 +11,8 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
   VerifyEmailPage,
-  EmailVerificationRequiredPage
+  EmailVerificationRequiredPage,
+  SetupAccountPage
 } from '@/pages'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
@@ -87,6 +88,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/setup-account" element={<SetupAccountPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/email-verification-required" element={
           <RequireAuth>
