@@ -543,13 +543,14 @@ func NewMux() *http.ServeMux {
 					Role  string `json:"role"`
 					Email string `json:"email"`
 					SkipEmailVerification *bool `json:"skip_email_verification"`
+					OnboardingCompleted *bool `json:"onboarding_completed"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					http.Error(w, "Invalid request body", http.StatusBadRequest)
 					return
 				}
 
-				user, err := authSvc.UpdateUser(r.Context(), id, req.Email, req.Role, req.SkipEmailVerification)
+				user, err := authSvc.UpdateUser(r.Context(), id, req.Email, req.Role, req.SkipEmailVerification, req.OnboardingCompleted)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -609,6 +610,7 @@ func NewMux() *http.ServeMux {
 			if r.Method == http.MethodPut {
 				var req struct {
 					Email string `json:"email"`
+					OnboardingCompleted *bool `json:"onboarding_completed"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -616,7 +618,7 @@ func NewMux() *http.ServeMux {
 				}
 
 				// Users can only update their own email, not role
-				user, err := authSvc.UpdateUser(r.Context(), token.UserID, req.Email, "", nil)
+				user, err := authSvc.UpdateUser(r.Context(), token.UserID, req.Email, "", nil, req.OnboardingCompleted)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return

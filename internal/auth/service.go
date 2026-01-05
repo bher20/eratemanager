@@ -277,7 +277,7 @@ func (s *Service) CreateRole(role string, policies []Policy) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) UpdateUser(ctx context.Context, id string, email, role string, skipVerification *bool) (*storage.User, error) {
+func (s *Service) UpdateUser(ctx context.Context, id string, email, role string, skipVerification *bool, onboardingCompleted *bool) (*storage.User, error) {
 	user, err := s.storage.GetUser(ctx, id)
 	if err != nil {
 		return nil, err
@@ -315,6 +315,11 @@ func (s *Service) UpdateUser(ctx context.Context, id string, email, role string,
 
 	if skipVerification != nil && *skipVerification != user.SkipEmailVerification {
 		user.SkipEmailVerification = *skipVerification
+		changed = true
+	}
+
+	if onboardingCompleted != nil && *onboardingCompleted != user.OnboardingCompleted {
+		user.OnboardingCompleted = *onboardingCompleted
 		changed = true
 	}
 

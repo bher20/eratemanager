@@ -25,6 +25,7 @@ type User struct {
 	Email        string    `json:"email"`
 	EmailVerified bool     `json:"email_verified"`
 	SkipEmailVerification bool `json:"skip_email_verification"`
+	OnboardingCompleted bool `json:"onboarding_completed"`
 	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`

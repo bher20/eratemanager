@@ -79,6 +79,7 @@ export interface User {
   email: string
   email_verified: boolean
   skip_email_verification: boolean
+  onboarding_completed: boolean
   role: string
   created_at: string
   updated_at: string

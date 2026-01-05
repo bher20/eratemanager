@@ -20,6 +20,8 @@ import { useEffect, useState } from 'react'
 import { getAuthStatus } from '@/lib/api'
 import { LoadingSpinner } from '@/components/Loading'
 
+import { OnboardingWizard } from '@/components/OnboardingWizard'
+
 function RequireEmailVerification({ children }: { children: JSX.Element }) {
   const { user, isLoading } = useAuth()
 
@@ -32,6 +34,21 @@ function RequireEmailVerification({ children }: { children: JSX.Element }) {
   }
 
   return children
+}
+
+function OnboardingCheck({ children }: { children: JSX.Element }) {
+  const { user } = useAuth()
+  
+  // Show wizard if user is admin and hasn't completed onboarding
+  // We render the children (app content) behind the modal
+  return (
+    <>
+      {children}
+      {user && user.role === 'admin' && !user.onboarding_completed && (
+        <OnboardingWizard />
+      )}
+    </>
+  )
 }
 
 function App() {
@@ -84,18 +101,20 @@ function App() {
             ) : (
               <RequireAuth>
                 <RequireEmailVerification>
-                  <Layout>
-                    <Routes>
-                      <Route path="/" element={<DashboardPage />} />
-                      <Route path="/electric" element={<ElectricPage />} />
-                      <Route path="/water" element={<WaterPage />} />
-                      <Route path="/profile" element={<ProfilePage />} />
-                      <Route path="/tokens" element={<TokensPage />} />
-                      
-                      {/* Settings Routes */}
-                      <Route path="/settings" element={<SettingsPage />} />
-                    </Routes>
-                  </Layout>
+                  <OnboardingCheck>
+                    <Layout>
+                      <Routes>
+                        <Route path="/" element={<DashboardPage />} />
+                        <Route path="/electric" element={<ElectricPage />} />
+                        <Route path="/water" element={<WaterPage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
+                        <Route path="/tokens" element={<TokensPage />} />
+                        
+                        {/* Settings Routes */}
+                        <Route path="/settings" element={<SettingsPage />} />
+                      </Routes>
+                    </Layout>
+                  </OnboardingCheck>
                 </RequireEmailVerification>
               </RequireAuth>
             )
