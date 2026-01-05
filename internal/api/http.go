@@ -81,10 +81,23 @@ func NewMux() *http.ServeMux {
 		st = storage.NewMemoryWithProviders(pList)
 		err = nil
 	} else {
-		st, err = storage.Open(ctxSvc, storage.Config{Driver: driver, DSN: dsn})
+		// Retry connection for up to 30 seconds to allow database to start
+		for i := 0; i < 6; i++ {
+			st, err = storage.Open(ctxSvc, storage.Config{Driver: driver, DSN: dsn})
+			if err == nil {
+				break
+			}
+			log.Printf("storage.Open failed (attempt %d/6): %v; retrying in 5s...", i+1, err)
+			time.Sleep(5 * time.Second)
+		}
 	}
 	if err != nil {
 		log.Printf("storage.Open failed (driver=%s dsn=%s): %v; falling back to PDF-only mode", driver, dsn, err)
+		// If we explicitly requested a database (other than default sqlite fallback), we should probably fail hard
+		// so Kubernetes restarts us, rather than running in a broken state.
+		if os.Getenv("ERATEMANAGER_DB_DRIVER") != "" {
+			log.Fatal("Failed to connect to configured database")
+		}
 		svc = rates.NewService(cfg)
 	} else {
 		log.Printf("rates service using storage backend driver=%s", driver)

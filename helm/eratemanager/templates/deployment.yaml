@@ -40,6 +40,8 @@ spec:
               value: {{ .Values.db.driver | quote }}
             - name: ERATEMANAGER_DB_DSN
               value: {{ include "eratemanager.db.dsn" . | quote }}
+            - name: ERATEMANAGER_AUTO_MIGRATE
+              value: {{ .Values.db.autoMigrate | quote }}
 
           ports:
             - containerPort: {{ .Values.app.port }}
