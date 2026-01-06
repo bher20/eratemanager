@@ -73,7 +73,7 @@ export function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Electric Providers"
-              value={String(electricProviders?.providers?.filter(p => p.type === 'electric').length || 0)}
+              value={String(electricProviders?.filter(p => p.type === 'electric').length || 0)}
               subtitle="Available utilities"
               icon={<Zap className="h-5 w-5" />}
             />
@@ -108,7 +108,7 @@ export function DashboardPage() {
                     <Zap className="h-6 w-6 text-yellow-500" />
                   </div>
                   <Badge>
-                    {electricProviders?.providers?.filter(p => p.type === 'electric').length || 0} providers
+                    {electricProviders?.filter(p => p.type === 'electric').length || 0} providers
                   </Badge>
                 </div>
                 <CardTitle className="mt-4">Electric Rates</CardTitle>
@@ -118,7 +118,7 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {electricProviders?.providers?.filter(p => p.type === 'electric').slice(0, 3).map((provider) => (
+                  {electricProviders?.filter(p => p.type === 'electric').slice(0, 3).map((provider) => (
                     <Link
                       key={provider.key}
                       to={`/electric?provider=${provider.key}`}

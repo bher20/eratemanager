@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { Select } from '@/components/Select'
-import { CheckCircle, Mail, Users, RefreshCw, ArrowRight, SkipForward, X } from 'lucide-react'
+import { CheckCircle, Mail, Users, RefreshCw, ArrowRight, X } from 'lucide-react'
 import { EmailConfig } from '@/lib/types'
 
 const STEPS = [
@@ -65,7 +65,7 @@ export function OnboardingWizard() {
         .catch(console.error)
     } else if (currentStep === 2) {
       // Fetch email config
-      fetch('/api/v1/settings/email', {
+      fetch('/settings/email', {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -93,7 +93,7 @@ export function OnboardingWizard() {
         })
       } else if (currentStep === 2) {
         // Save email config
-        const res = await fetch('/api/v1/settings/email', {
+        const res = await fetch('/settings/email', {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
@@ -574,11 +574,6 @@ export function OnboardingWizard() {
 
           {currentStep < STEPS.length - 1 ? (
             <div className="flex gap-2">
-              {currentStep > 0 && (
-                <Button variant="ghost" onClick={() => setCurrentStep(prev => prev + 1)}>
-                  Skip <SkipForward className="w-4 h-4 ml-2" />
-                </Button>
-              )}
               <Button onClick={handleNext} disabled={isLoading}>
                 {currentStep === 0 ? 'Get Started' : 'Next'} <ArrowRight className="w-4 h-4 ml-2" />
               </Button>

@@ -1,4 +1,4 @@
-package rates
+package whud
 
 import (
 	"fmt"
@@ -7,21 +7,42 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/bher20/eratemanager/pkg/providers"
+	"github.com/bher20/eratemanager/pkg/providers/shared"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 )
 
 func init() {
-	RegisterWaterParser(WaterParserConfig{
-		Key:       "whud",
-		Name:      "White House Utility District",
-		ParseHTML: ParseWHUDRatesFromURL,
-	})
+	waterproviders.Register(&Provider{})
 }
 
-// ParseWHUDRatesFromURL fetches the WHUD rates page and extracts water/sewer rates.
-func ParseWHUDRatesFromURL(url string) (*WaterRatesResponse, error) {
+type Provider struct{}
+
+func (p *Provider) Key() string {
+	return "whud"
+}
+
+func (p *Provider) Name() string {
+	return "White House Utility District"
+}
+
+func (p *Provider) Type() providers.ProviderType {
+	return providers.ProviderTypeWater
+}
+
+func (p *Provider) LandingURL() string {
+	return "https://www.whud.org/rates-and-fees/"
+}
+
+func (p *Provider) DefaultPDFPath() string {
+	return "" // WHUD is HTML based
+}
+
+func (p *Provider) ParseHTML(url string) (*waterproviders.WaterRatesResponse, error) {
 	// WHUD server doesn't send intermediate certificates in its chain.
 	// Use a client with the GoDaddy intermediate cert to enable proper verification.
-	client := WHUDHTTPClient()
+	client := shared.WHUDHTTPClient()
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch WHUD rates page: %w", err)
@@ -37,17 +58,16 @@ func ParseWHUDRatesFromURL(url string) (*WaterRatesResponse, error) {
 		return nil, fmt.Errorf("read WHUD rates page: %w", err)
 	}
 
-	return ParseWHUDRatesFromHTML(string(body))
+	return p.ParseRatesFromHTML(string(body))
 }
 
-// ParseWHUDRatesFromHTML parses WHUD rates from raw HTML content.
-// Based on the structure at https://www.whud.org/rates-and-fees/
-func ParseWHUDRatesFromHTML(html string) (*WaterRatesResponse, error) {
-	result := &WaterRatesResponse{
+// ParseRatesFromHTML parses WHUD rates from raw HTML content.
+func (p *Provider) ParseRatesFromHTML(html string) (*waterproviders.WaterRatesResponse, error) {
+	result := &waterproviders.WaterRatesResponse{
 		ProviderKey:  "whud",
 		ProviderName: "White House Utility District",
 		FetchedAt:    time.Now(),
-		Water: WaterRateDetails{
+		Water: waterproviders.WaterRateDetails{
 			MeterSizes:       make(map[string]float64),
 			DefaultMeterSize: "5/8 x 3/4 inch",
 			UseRateUnit:      "gallon",
@@ -96,7 +116,7 @@ func ParseWHUDRatesFromHTML(html string) (*WaterRatesResponse, error) {
 	if match := sewerBaseRe.FindStringSubmatch(html); len(match) > 1 {
 		if rate, err := strconv.ParseFloat(match[1], 64); err == nil {
 			if result.Sewer == nil {
-				result.Sewer = &SewerRateDetails{UseRateUnit: "gallon"}
+				result.Sewer = &waterproviders.SewerRateDetails{UseRateUnit: "gallon"}
 			}
 			result.Sewer.BaseCharge = rate
 		}
@@ -108,7 +128,7 @@ func ParseWHUDRatesFromHTML(html string) (*WaterRatesResponse, error) {
 			if match := baseRe.FindStringSubmatch(sewerSection); len(match) > 1 {
 				if rate, err := strconv.ParseFloat(match[1], 64); err == nil {
 					if result.Sewer == nil {
-						result.Sewer = &SewerRateDetails{UseRateUnit: "gallon"}
+						result.Sewer = &waterproviders.SewerRateDetails{UseRateUnit: "gallon"}
 					}
 					result.Sewer.BaseCharge = rate
 				}
@@ -119,7 +139,7 @@ func ParseWHUDRatesFromHTML(html string) (*WaterRatesResponse, error) {
 	if match := sewerUseRe.FindStringSubmatch(html); len(match) > 1 {
 		if rate, err := strconv.ParseFloat(match[1], 64); err == nil {
 			if result.Sewer == nil {
-				result.Sewer = &SewerRateDetails{UseRateUnit: "gallon"}
+				result.Sewer = &waterproviders.SewerRateDetails{UseRateUnit: "gallon"}
 			}
 			result.Sewer.UseRate = rate
 		}

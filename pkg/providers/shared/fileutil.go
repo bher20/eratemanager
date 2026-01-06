@@ -1,4 +1,4 @@
-package rates
+package shared
 
 import (
 	"io"
@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 )
 
-func writeFileAtomically(path string, r io.Reader) error {
+// WriteFileAtomically writes data to a file atomically by writing to a temp file and renaming it.
+func WriteFileAtomically(path string, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

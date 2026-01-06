@@ -9,10 +9,6 @@ export interface Provider {
   type?: 'electric' | 'water'
 }
 
-export interface ProvidersResponse {
-  providers: Provider[]
-}
-
 export interface ResidentialRates {
   energy_rate_usd_per_kwh?: number
   tva_fuel_rate_usd_per_kwh?: number
@@ -21,9 +17,13 @@ export interface ResidentialRates {
 }
 
 export interface RatesResponse {
-  provider: string
+  utility?: string
+  provider?: string
   fetched_at: string
-  rates: {
+  electric_rates?: {
+    residential_standard?: ResidentialRates
+  }
+  rates?: {
     residential_standard?: ResidentialRates
   }
   source_url?: string

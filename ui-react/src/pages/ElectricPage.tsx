@@ -44,7 +44,7 @@ export function ElectricPage() {
   } = useMutation(refreshProvider)
 
   // Filter for electric providers only
-  const providers = (providersData?.providers || []).filter(
+  const providers = (providersData || []).filter(
     (p) => p.type === 'electric' || !p.type
   )
 
@@ -76,7 +76,7 @@ export function ElectricPage() {
     }
   }
 
-  const rates = ratesData?.rates?.residential_standard
+  const rates = ratesData?.electric_rates?.residential_standard ?? ratesData?.rates?.residential_standard
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -178,7 +178,7 @@ export function ElectricPage() {
           <div className="flex items-center gap-3">
             <Badge variant="success">Active</Badge>
             <span className="text-lg font-semibold">
-              {ratesData.provider?.toUpperCase()}
+              {(ratesData.utility || ratesData.provider)?.toUpperCase()}
             </span>
             {ratesData.fetched_at && (
               <span className="text-sm text-muted-foreground">

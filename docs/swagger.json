@@ -1,0 +1,127 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/api/v2/electric-rates/providers": {
+            "get": {
+                "description": "Get a list of all available electric providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "electric"
+                ],
+                "summary": "List electric providers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_api.ProviderDTO"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/electric-rates/{providerKey}/{action}": {
+            "get": {
+                "description": "Get residential rates, PDF, or force refresh for a provider",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "electric"
+                ],
+                "summary": "Get electric rates or refresh",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider Key",
+                        "name": "providerKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Action (residential, pdf, refresh)",
+                        "name": "action",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/v2/water-rates/providers": {
+            "get": {
+                "description": "Get a list of all available water providers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "water"
+                ],
+                "summary": "List water providers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_api.ProviderDTO"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/water-rates/{providerKey}": {
+            "get": {
+                "description": "Get water rates or force refresh for a provider",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "water"
+                ],
+                "summary": "Get water rates or refresh",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider Key",
+                        "name": "providerKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Action (refresh)",
+                        "name": "action",
+                        "in": "path"
+                    }
+                ],
+                "responses": {}
+            }
+        }
+    },
+    "definitions": {
+        "internal_api.ProviderDTO": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

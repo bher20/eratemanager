@@ -1,5 +1,5 @@
 import type {
-  ProvidersResponse,
+  Provider,
   RatesResponse,
   WaterProvider,
   WaterRatesResponse,
@@ -70,26 +70,25 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   }
 }
 
-export async function getProviders(): Promise<ProvidersResponse> {
-  return fetchApi<ProvidersResponse>('/providers')
+export async function getProviders(): Promise<Provider[]> {
+  return fetchApi<Provider[]>('/api/v2/electric-rates/providers')
 }
 
 export async function getRates(provider: string): Promise<RatesResponse> {
-  return fetchApi<RatesResponse>(`/rates/electric/${provider}/residential`)
+  return fetchApi<RatesResponse>(`/api/v2/electric-rates/${provider}/residential`)
 }
 export const getResidentialRates = getRates
 
 export async function getWaterProviders(): Promise<WaterProvider[]> {
-  const response = await fetchApi<{ providers: WaterProvider[] }>('/rates/water/providers')
-  return response.providers
+  return fetchApi<WaterProvider[]>('/api/v2/water-rates/providers')
 }
 
 export async function getWaterRates(provider: string): Promise<WaterRatesResponse> {
-  return fetchApi<WaterRatesResponse>(`/rates/water/${provider}`)
+  return fetchApi<WaterRatesResponse>(`/api/v2/water-rates/${provider}`)
 }
 
 export async function refreshRates(provider: string, type: 'electric' | 'water' = 'electric'): Promise<RefreshResponse> {
-  return fetchApi<RefreshResponse>(`/rates/${type}/${provider}/refresh`, {
+  return fetchApi<RefreshResponse>(`/api/v2/${type}-rates/${provider}/refresh`, {
     method: 'POST',
   })
 }

@@ -51,6 +51,11 @@ type Storage interface {
 	GetEmailConfig(ctx context.Context) (*EmailConfig, error)
 	SaveEmailConfig(ctx context.Context, config EmailConfig) error
 
+	// Scheduled Jobs & Locking
+	AcquireAdvisoryLock(ctx context.Context, key int64) (bool, error)
+	ReleaseAdvisoryLock(ctx context.Context, key int64) (bool, error)
+	UpdateScheduledJob(ctx context.Context, name string, started time.Time, dur time.Duration, success bool, errMsg string) error
+
 	// Close releases any resources (no-op for in-memory).
 	Close() error
 
@@ -60,8 +65,8 @@ type Storage interface {
 
 // BatchProgress tracks the state of a single provider within a batch job.
 type BatchProgress struct {
-	BatchID      string    `json:"batch_id"`
-	Provider     string    `json:"provider"`
+	BatchID      string    `json:"batch_id" gorm:"primaryKey"`
+	Provider     string    `json:"provider" gorm:"primaryKey"`
 	Status       string    `json:"status"` // "pending", "in_progress", "completed", "failed"
 	StartedAt    time.Time `json:"started_at,omitempty"`
 	CompletedAt  time.Time `json:"completed_at,omitempty"`

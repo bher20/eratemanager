@@ -1,4 +1,4 @@
-package rates
+package waterproviders
 
 import "time"
 
@@ -50,29 +50,4 @@ type SewerRateDetails struct {
 
 	// EffectiveDate when these rates became effective
 	EffectiveDate string `json:"effective_date,omitempty"`
-}
-
-// CalculateWaterBill calculates the monthly water bill based on usage
-func (w *WaterRatesResponse) CalculateWaterBill(gallons float64) float64 {
-	waterCost := w.Water.BaseCharge + (gallons * w.Water.UseRate)
-
-	sewerCost := 0.0
-	if w.Sewer != nil {
-		sewerCost = w.Sewer.BaseCharge + (gallons * w.Sewer.UseRate)
-	}
-
-	return waterCost + sewerCost
-}
-
-// CalculateWaterOnlyCost calculates just the water portion (no sewer)
-func (w *WaterRatesResponse) CalculateWaterOnlyCost(gallons float64) float64 {
-	return w.Water.BaseCharge + (gallons * w.Water.UseRate)
-}
-
-// CalculateSewerOnlyCost calculates just the sewer portion
-func (w *WaterRatesResponse) CalculateSewerOnlyCost(gallons float64) float64 {
-	if w.Sewer == nil {
-		return 0
-	}
-	return w.Sewer.BaseCharge + (gallons * w.Sewer.UseRate)
 }

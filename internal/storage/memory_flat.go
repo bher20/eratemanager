@@ -313,3 +313,17 @@ func (m *MemoryStorage) SaveEmailConfig(ctx context.Context, config EmailConfig)
 	m.emailConfig = &config
 	return nil
 }
+
+func (m *MemoryStorage) AcquireAdvisoryLock(ctx context.Context, key int64) (bool, error) {
+// In-memory single instance always acquires lock
+return true, nil
+}
+
+func (m *MemoryStorage) ReleaseAdvisoryLock(ctx context.Context, key int64) (bool, error) {
+return true, nil
+}
+
+func (m *MemoryStorage) UpdateScheduledJob(ctx context.Context, name string, started time.Time, dur time.Duration, success bool, errMsg string) error {
+// No-op for memory storage
+return nil
+}

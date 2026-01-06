@@ -27,39 +27,15 @@ func Open(ctx context.Context, cfg Config) (Storage, error) {
 		}
 		return NewMemory(), nil
 
-	case "sqlite":
-		log.Printf("storage: using sqlite backend dsn=%s", cfg.DSN)
-		st, err := OpenSQLite(cfg.DSN)
+	case "sqlite", "postgres", "postgrespool": // All handled by GORM now
+		log.Printf("storage: using gorm driver=%s", drv)
+		st, err := NewGormStorage(drv, cfg.DSN)
 		if err != nil {
 			return nil, err
 		}
 		if err := st.Migrate(ctx); err != nil {
 			st.Close()
-			return nil, fmt.Errorf("sqlite migrate: %w", err)
-		}
-		return st, nil
-
-	case "postgres":
-		log.Printf("storage: using postgres backend dsn=%s", cfg.DSN)
-		st, err := OpenPostgres(cfg.DSN)
-		if err != nil {
-			return nil, err
-		}
-		if err := st.Migrate(ctx); err != nil {
-			st.Close()
-			return nil, fmt.Errorf("postgres migrate: %w", err)
-		}
-		return st, nil
-
-	case "postgrespool":
-		log.Printf("storage: using postgres pooled backend dsn=%s", cfg.DSN)
-		st, err := OpenPostgresPool(ctx, cfg.DSN)
-		if err != nil {
-			return nil, err
-		}
-		if err := st.Migrate(ctx); err != nil {
-			st.Close()
-			return nil, fmt.Errorf("postgrespool migrate: %w", err)
+			return nil, fmt.Errorf("storage migrate: %w", err)
 		}
 		return st, nil
 

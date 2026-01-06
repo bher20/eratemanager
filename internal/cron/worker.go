@@ -12,6 +12,8 @@ import (
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 	"github.com/robfig/cron/v3"
 )
 
@@ -19,41 +21,28 @@ import (
 // variables and provider defaults (duplicate for worker package isolation).
 func buildRatesConfigWorker() rates.Config {
 	pdfPaths := make(map[string]string)
-	for _, p := range rates.Providers() {
-		envKey := strings.ToUpper(p.Key) + "_PDF_PATH"
+	for _, p := range electricproviders.GetAll() {
+		envKey := strings.ToUpper(p.Key()) + "_PDF_PATH"
 		if path := os.Getenv(envKey); path != "" {
-			pdfPaths[p.Key] = path
-		} else if p.DefaultPDFPath != "" {
-			pdfPaths[p.Key] = p.DefaultPDFPath
+			pdfPaths[p.Key()] = path
+		} else if p.DefaultPDFPath() != "" {
+			pdfPaths[p.Key()] = p.DefaultPDFPath()
 		}
 	}
 	return rates.Config{PDFPaths: pdfPaths}
 }
 
 // Run starts a simple cron worker that periodically refreshes provider rates
-// using a Postgres pgxpool backend and PostgreSQL advisory locks so that in a
+// using a storage backend. It uses advisory locks (if supported) so that in a
 // multi-instance deployment only one worker executes the job.
 func Run(ctx context.Context, driver, dsn string) error {
-	if driver == "" {
-		driver = "postgrespool"
-	}
-	if driver != "postgrespool" {
-		return fmt.Errorf("cron worker requires ERATEMANAGER_DB_DRIVER=postgrespool (got %q)", driver)
-	}
-
 	// Open storage via the generic factory so that it still satisfies the
-	// storage.Storage interface for rates.Service. We then assert the concrete
-	// type to gain access to advisory locks.
+	// storage.Storage interface for rates.Service.
 	stGeneric, err := storage.Open(ctx, storage.Config{Driver: driver, DSN: dsn})
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
 	}
 	defer stGeneric.Close()
-
-	pg, ok := stGeneric.(*storage.PostgresPoolStorage)
-	if !ok {
-		return fmt.Errorf("storage driver %q is not PostgresPoolStorage", driver)
-	}
 
 	// Build rates service with storage so results are cached to the DB.
 	svc := rates.NewServiceWithStorage(buildRatesConfigWorker(), stGeneric)
@@ -120,7 +109,7 @@ func Run(ctx context.Context, driver, dsn string) error {
 
 			started := time.Now()
 
-			ok, err := pg.AcquireAdvisoryLock(ctx, lockKey)
+			ok, err := stGeneric.AcquireAdvisoryLock(ctx, lockKey)
 			if err != nil {
 				log.Printf("cron: acquire advisory lock failed: %v", err)
 				metrics.UpdateJobMetrics(jobName, started, err)
@@ -143,15 +132,24 @@ func Run(ctx context.Context, driver, dsn string) error {
 			var runErr error
 			func() {
 				defer func() {
-					if _, err := pg.ReleaseAdvisoryLock(ctx, lockKey); err != nil {
+					if _, err := stGeneric.ReleaseAdvisoryLock(ctx, lockKey); err != nil {
 						log.Printf("cron: release advisory lock failed: %v", err)
 					}
 				}()
 
 				// Execute the job: refresh all known providers.
-				for _, p := range rates.Providers() {
-					if _, err := svc.GetResidential(ctx, p.Key); err != nil {
-						log.Printf("cron: refresh provider %s failed: %v", p.Key, err)
+				for _, p := range electricproviders.GetAll() {
+					if _, err := svc.GetElectricResidential(ctx, p.Key()); err != nil {
+						log.Printf("cron: refresh provider %s failed: %v", p.Key(), err)
+						if runErr == nil {
+							runErr = err
+						}
+					}
+				}
+				for _, p := range waterproviders.GetAll() {
+					waterSvc := rates.NewWaterServiceWithStorage(stGeneric)
+					if _, err := waterSvc.ForceRefresh(ctx, p.Key()); err != nil {
+						log.Printf("cron: refresh provider %s failed: %v", p.Key(), err)
 						if runErr == nil {
 							runErr = err
 						}
@@ -167,7 +165,7 @@ func Run(ctx context.Context, driver, dsn string) error {
 			if runErr != nil {
 				errMsg = runErr.Error()
 			}
-			if err := pg.UpdateScheduledJob(ctx, jobName, started, dur, success, errMsg); err != nil {
+			if err := stGeneric.UpdateScheduledJob(ctx, jobName, started, dur, success, errMsg); err != nil {
 				log.Printf("cron: update scheduled_jobs failed: %v", err)
 			}
 

@@ -3,8 +3,10 @@ package rates
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 )
 
 // WaterService coordinates fetching and caching of water rates.
@@ -23,8 +25,8 @@ func NewWaterServiceWithStorage(st storage.Storage) *WaterService {
 }
 
 // GetWaterRates returns water rates for a provider.
-func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*WaterRatesResponse, error) {
-	parser, ok := GetWaterParser(providerKey)
+func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*waterproviders.WaterRatesResponse, error) {
+	parser, ok := waterproviders.Get(providerKey)
 	if !ok {
 		return nil, nil // Provider not found
 	}
@@ -33,7 +35,7 @@ func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*
 	if s.store != nil {
 		snap, err := s.store.GetRatesSnapshot(ctx, "water:"+providerKey)
 		if err == nil && snap != nil && len(snap.Payload) > 0 {
-			var resp WaterRatesResponse
+			var resp waterproviders.WaterRatesResponse
 			if err := json.Unmarshal(snap.Payload, &resp); err == nil {
 				return &resp, nil
 			}
@@ -41,8 +43,12 @@ func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*
 	}
 
 	// Fetch from source
-	provider, _ := GetProvider(providerKey)
-	resp, err := parser.ParseHTML(provider.LandingURL)
+	landingURL := parser.LandingURL()
+	if landingURL == "" {
+		return nil, fmt.Errorf("no landing URL for provider %s", providerKey)
+	}
+
+	resp, err := parser.ParseHTML(landingURL)
 	if err != nil {
 		return nil, err
 	}
@@ -62,14 +68,13 @@ func (s *WaterService) GetWaterRates(ctx context.Context, providerKey string) (*
 }
 
 // ForceRefresh bypasses the cache and fetches fresh rates.
-func (s *WaterService) ForceRefresh(ctx context.Context, providerKey string) (*WaterRatesResponse, error) {
-	parser, ok := GetWaterParser(providerKey)
+func (s *WaterService) ForceRefresh(ctx context.Context, providerKey string) (*waterproviders.WaterRatesResponse, error) {
+	parser, ok := waterproviders.Get(providerKey)
 	if !ok {
 		return nil, nil
 	}
 
-	provider, _ := GetProvider(providerKey)
-	resp, err := parser.ParseHTML(provider.LandingURL)
+	resp, err := parser.ParseHTML(parser.LandingURL())
 	if err != nil {
 		return nil, err
 	}

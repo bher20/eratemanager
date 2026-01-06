@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/shared"
 )
 
 // Config controls how the rates service behaves.
@@ -36,17 +38,17 @@ func NewServiceWithStorage(cfg Config, st storage.Storage) *Service {
 	return &Service{cfg: cfg, store: st}
 }
 
-// GetResidential returns the residential rate structure based on provider key.
+// GetElectricResidential returns the residential rate structure based on provider key.
 // It consults persistent storage first; on cache miss it parses PDFs and
 // writes a new snapshot.
-func (s *Service) GetResidential(ctx context.Context, provider string) (*RatesResponse, error) {
+func (s *Service) GetElectricResidential(ctx context.Context, provider string) (*electricproviders.ElectricRatesResponse, error) {
 	// Use the registry to find the parser
-	parser, ok := GetParser(provider)
+	parser, ok := electricproviders.Get(provider)
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s (no parser registered)", provider)
 	}
 
-	loader := func() (*RatesResponse, error) {
+	loader := func() (*electricproviders.ElectricRatesResponse, error) {
 		return s.parseProviderPDF(provider, parser)
 	}
 
@@ -58,13 +60,13 @@ func (s *Service) GetResidential(ctx context.Context, provider string) (*RatesRe
 func (s *Service) getProviderRates(
 	ctx context.Context,
 	key string,
-	loader func() (*RatesResponse, error),
-) (*RatesResponse, error) {
+	loader func() (*electricproviders.ElectricRatesResponse, error),
+) (*electricproviders.ElectricRatesResponse, error) {
 	// If we have a storage backend, try a cached snapshot first.
 	if s.store != nil {
 		snap, err := s.store.GetRatesSnapshot(ctx, key)
 		if err == nil && snap != nil && len(snap.Payload) > 0 {
-			var resp RatesResponse
+			var resp electricproviders.ElectricRatesResponse
 			if err := json.Unmarshal(snap.Payload, &resp); err == nil {
 				return &resp, nil
 			}
@@ -99,7 +101,7 @@ func (s *Service) getProviderRates(
 }
 
 // parseProviderPDF is a generic PDF loader that uses the registry.
-func (s *Service) parseProviderPDF(providerKey string, parser ParserConfig) (*RatesResponse, error) {
+func (s *Service) parseProviderPDF(providerKey string, parser electricproviders.ElectricProvider) (*electricproviders.ElectricRatesResponse, error) {
 	// Check for override in config
 	path := ""
 	if s.cfg.PDFPaths != nil {
@@ -108,8 +110,8 @@ func (s *Service) parseProviderPDF(providerKey string, parser ParserConfig) (*Ra
 
 	// Fall back to provider descriptor
 	if path == "" {
-		if p, ok := GetProvider(providerKey); ok && p.DefaultPDFPath != "" {
-			path = p.DefaultPDFPath
+		if defaultPath := parser.DefaultPDFPath(); defaultPath != "" {
+			path = defaultPath
 		}
 	}
 
@@ -126,9 +128,9 @@ func (s *Service) parseProviderPDF(providerKey string, parser ParserConfig) (*Ra
 
 // ForceRefresh bypasses the cache and forces a fresh PDF parse for a provider.
 // The result is saved to storage.
-func (s *Service) ForceRefresh(ctx context.Context, provider string) (*RatesResponse, error) {
+func (s *Service) ForceRefresh(ctx context.Context, provider string) (*electricproviders.ElectricRatesResponse, error) {
 	// Use the registry to find the parser
-	parser, ok := GetParser(provider)
+	parser, ok := electricproviders.Get(provider)
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s (no parser registered)", provider)
 	}
@@ -156,4 +158,37 @@ func (s *Service) ForceRefresh(ctx context.Context, provider string) (*RatesResp
 	}
 
 	return resp, nil
+}
+
+// RefreshPDF discovers and downloads the latest PDF for the provider.
+func (s *Service) RefreshPDF(ctx context.Context, providerKey string) (string, error) {
+	p, ok := electricproviders.Get(providerKey)
+	if !ok {
+		return "", fmt.Errorf("unknown provider: %s", providerKey)
+	}
+
+	// Discover PDF URL
+	pdfURL, err := shared.DiscoverPDFURL(providerKey, p.LandingURL())
+	if err != nil {
+		return "", fmt.Errorf("discover pdf: %w", err)
+	}
+
+	// Determine save path
+	path := ""
+	if s.cfg.PDFPaths != nil {
+		path = s.cfg.PDFPaths[providerKey]
+	}
+	if path == "" {
+		path = p.DefaultPDFPath()
+	}
+	if path == "" {
+		return "", fmt.Errorf("no PDF path configured for %s", providerKey)
+	}
+
+	// Download PDF
+	if err := shared.DownloadFile(pdfURL, path); err != nil {
+		return "", fmt.Errorf("download pdf: %w", err)
+	}
+
+	return pdfURL, nil
 }

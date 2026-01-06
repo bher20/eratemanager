@@ -1,4 +1,4 @@
-package rates
+package nes
 
 import (
 	"bytes"
@@ -7,21 +7,39 @@ import (
 	"regexp"
 	"time"
 
-	pdf "github.com/ledongthuc/pdf"
+	"github.com/bher20/eratemanager/pkg/providers"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/shared"
+	"github.com/ledongthuc/pdf"
 )
 
 func init() {
-	RegisterParser(ParserConfig{
-		Key:       "nes",
-		Name:      "Nashville Electric Service",
-		ParsePDF:  ParseNESRatesFromPDF,
-		ParseText: ParseNESRatesFromText,
-	})
+	electricproviders.Register(&Provider{})
 }
 
-// ParseNESRatesFromPDF opens a NES rates PDF at the given path, extracts
-// text, and delegates to ParseNESRatesFromText.
-func ParseNESRatesFromPDF(path string) (*RatesResponse, error) {
+type Provider struct{}
+
+func (p *Provider) Key() string {
+	return "nes"
+}
+
+func (p *Provider) Name() string {
+	return "Nashville Electric Service"
+}
+
+func (p *Provider) Type() providers.ProviderType {
+	return providers.ProviderTypeElectric
+}
+
+func (p *Provider) LandingURL() string {
+	return "https://www.nespower.com/rates"
+}
+
+func (p *Provider) DefaultPDFPath() string {
+	return "rates_nes.pdf"
+}
+
+func (p *Provider) ParsePDF(path string) (*electricproviders.ElectricRatesResponse, error) {
 	f, r, err := pdf.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open pdf: %w", err)
@@ -38,56 +56,45 @@ func ParseNESRatesFromPDF(path string) (*RatesResponse, error) {
 		return nil, fmt.Errorf("read pdf text: %w", err)
 	}
 
-	return ParseNESRatesFromText(buf.String())
+	return p.ParseText(buf.String())
 }
 
-// ParseNESRatesFromText parses a plain-text representation of the NES
-// residential rates and extracts fields using regex heuristics.
-func ParseNESRatesFromText(text string) (*RatesResponse, error) {
+func (p *Provider) ParseText(text string) (*electricproviders.ElectricRatesResponse, error) {
 	// NES uses "Service Charge" instead of "Customer Charge"
-	// Format: "Service Charge: $14.06 per month" or similar
 	custRe := regexp.MustCompile(`(?:Customer|Service)\s+Charge[:\s]*\$?([0-9]+(?:\.[0-9]+)?)\s*(?:per month)?`)
 
-	// NES Energy Charge format: "Energy Charge: Summer Period 9.254¢ per kWh"
-	// or "Energy Charge: 9.254¢ per kWh per month"
+	// NES Energy Charge format
 	energyCentsRe := regexp.MustCompile(`Energy Charge[:\s]*(?:Summer Period\s+)?([0-9]+(?:\.[0-9]+)?)\s*[¢c]`)
-
-	// Fallback: Some utilities express energy charge directly in $/kWh
 	energyUSDRe := regexp.MustCompile(`Energy Charge[:\s]*\$?([0-9]+(?:\.[0-9]+)?)\s*per kWh`)
-
-	// Also try cents per kWh format
 	energyCentsAltRe := regexp.MustCompile(`Energy Charge[:\s]*([0-9]+(?:\.[0-9]+)?)\s*cents?\s*per kWh`)
 
 	// Fuel adjustment (TVA)
 	fuelRe := regexp.MustCompile(`Fuel(?: Cost)? Adjustment[:\s]*([0-9]+(?:\.[0-9]+)?)\s*[¢c]?(?:ents?)?\s*per kWh`)
 
-	// TVA Grid Access Charge - this is part of the monthly charge
+	// TVA Grid Access Charge
 	gridAccessRe := regexp.MustCompile(`(?:TVA )?Grid Access Charge[:\s]*\$?([0-9]+(?:\.[0-9]+)?)\s*per month`)
 
-	customerCharge := parseFirstFloat(custRe, text)
-	gridAccessCharge := parseFirstFloat(gridAccessRe, text)
+	customerCharge := shared.ParseFirstFloat(custRe, text)
+	gridAccessCharge := shared.ParseFirstFloat(gridAccessRe, text)
 
-	// Add grid access charge to customer charge if found
 	totalCustomerCharge := customerCharge
 	if gridAccessCharge > 0 {
 		totalCustomerCharge += gridAccessCharge
 	}
 
-	// Try to extract energy rate - prefer cents format for NES
 	energyRate := 0.0
-	if cents := parseFirstFloat(energyCentsRe, text); cents > 0 {
+	if cents := shared.ParseFirstFloat(energyCentsRe, text); cents > 0 {
 		energyRate = cents / 100.0
-	} else if usd := parseFirstFloat(energyUSDRe, text); usd > 0 {
+	} else if usd := shared.ParseFirstFloat(energyUSDRe, text); usd > 0 {
 		energyRate = usd
-	} else if cents := parseFirstFloat(energyCentsAltRe, text); cents > 0 {
+	} else if cents := shared.ParseFirstFloat(energyCentsAltRe, text); cents > 0 {
 		energyRate = cents / 100.0
 	}
 
 	fuelRate := 0.0
-	if v := parseFirstFloat(fuelRe, text); v > 0 {
-		// If value looks like cents (small number), convert
+	if v := shared.ParseFirstFloat(fuelRe, text); v > 0 {
 		if v < 1 {
-			fuelRate = v // Already in dollars
+			fuelRate = v
 		} else {
 			fuelRate = v / 100.0
 		}
@@ -99,13 +106,13 @@ func ParseNESRatesFromText(text string) (*RatesResponse, error) {
 	now := time.Now().UTC()
 	rawCopy := text
 
-	resp := &RatesResponse{
-		Utility:   "NES",
-		Source:    "NES Residential Rates PDF",
+	resp := &electricproviders.ElectricRatesResponse{
+		Utility:   "Nashville Electric Service",
+		Source:    "NES Rates PDF",
 		SourceURL: "https://www.nespower.com/rates/",
 		FetchedAt: now,
-		Rates: Rates{
-			ResidentialStandard: ResidentialStandard{
+		ElectricRates: electricproviders.ElectricRates{
+			ResidentialStandard: electricproviders.ResidentialStandard{
 				IsPresent:                true,
 				CustomerChargeMonthlyUSD: totalCustomerCharge,
 				EnergyRateUSDPerKWh:      energyRate,
@@ -116,5 +123,6 @@ func ParseNESRatesFromText(text string) (*RatesResponse, error) {
 			},
 		},
 	}
+
 	return resp, nil
 }

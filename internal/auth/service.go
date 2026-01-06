@@ -90,10 +90,17 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("auth: found %d users to sync roles", len(users))
 	for _, u := range users {
+		log.Printf("auth: syncing user %s role=%q", u.ID, u.Role)
 		if u.Role != "" {
 			// AddGroupingPolicy is idempotent - won't duplicate
-			e.AddGroupingPolicy(u.ID, u.Role)
+			added, err := e.AddGroupingPolicy(u.ID, u.Role)
+			if err != nil {
+				log.Printf("auth: error adding policy for user %s: %v", u.ID, err)
+			} else if added {
+				log.Printf("auth: added policy for user %s -> %s", u.ID, u.Role)
+			}
 		}
 	}
 
