@@ -22,12 +22,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token')
-    const storedUser = localStorage.getItem('user')
-    if (storedToken && storedUser) {
+    if (storedToken) {
       setToken(storedToken)
-      setUser(JSON.parse(storedUser))
+      // Always fetch fresh user data from server to get latest state
+      fetch('/auth/me', {
+        headers: { Authorization: `Bearer ${storedToken}` }
+      })
+        .then(res => {
+          if (res.ok) return res.json()
+          throw new Error('Failed to fetch user')
+        })
+        .then(updatedUser => {
+          localStorage.setItem('user', JSON.stringify(updatedUser))
+          setUser(updatedUser)
+        })
+        .catch(err => {
+          console.error('Failed to refresh user on load:', err)
+          // Fall back to localStorage if fetch fails
+          const storedUser = localStorage.getItem('user')
+          if (storedUser) {
+            setUser(JSON.parse(storedUser))
+          }
+        })
+        .finally(() => {
+          setIsLoading(false)
+        })
+    } else {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [])
 
   const login = (newToken: string, newUser: User) => {

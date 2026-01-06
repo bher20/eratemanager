@@ -14,29 +14,42 @@ IMAGE_NAME="bher20/eratemanager"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
 DEPLOYMENT_NAME="eratemanager"
 
+# Determine builder
+if command -v docker &> /dev/null; then
+    BUILDER="docker"
+    BUILD_CMD="build"
+elif command -v buildah &> /dev/null; then
+    BUILDER="buildah"
+    BUILD_CMD="bud"
+else
+    BUILDER="docker"
+    BUILD_CMD="build"
+fi
+
 echo "=========================================="
 echo "Building and Deploying eRateManager"
 echo "=========================================="
 echo "Version: ${VERSION}"
 echo "Namespace: ${NAMESPACE}"
 echo "Image: ${FULL_IMAGE}"
+echo "Builder: ${BUILDER}"
 echo ""
 
 # Step 1: Build Docker image
-echo "[1/4] Building Docker image..."
-docker build --no-cache --build-arg VERSION="${VERSION}" -t "${FULL_IMAGE}" -f Containerfile .
+echo "[1/4] Building container image..."
+${BUILDER} ${BUILD_CMD} --no-cache --build-arg VERSION="${VERSION}" -t "${FULL_IMAGE}" -f Containerfile .
 if [ $? -ne 0 ]; then
-    echo "❌ Docker build failed"
+    echo "❌ Build failed"
     exit 1
 fi
-echo "✅ Docker image built successfully"
+echo "✅ Image built successfully"
 echo ""
 
 # Step 2: Push to registry
 echo "[2/4] Pushing image to registry..."
-docker push "${FULL_IMAGE}"
+${BUILDER} push "${FULL_IMAGE}"
 if [ $? -ne 0 ]; then
-    echo "❌ Docker push failed"
+    echo "❌ Push failed"
     exit 1
 fi
 echo "✅ Image pushed successfully"

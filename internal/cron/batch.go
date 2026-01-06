@@ -2,7 +2,6 @@ package cron
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -15,19 +14,22 @@ import (
 	"github.com/bher20/eratemanager/internal/metrics"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
+	providerpkg "github.com/bher20/eratemanager/pkg/providers"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 )
 
 // buildRatesConfig creates a rates.Config with PDF paths from environment
 // variables and provider defaults.
 func buildRatesConfig() rates.Config {
 	pdfPaths := make(map[string]string)
-	for _, p := range rates.Providers() {
+	for _, p := range electricproviders.GetAll() {
 		// Check for env var override first (e.g., CEMC_PDF_PATH, NES_PDF_PATH)
-		envKey := strings.ToUpper(p.Key) + "_PDF_PATH"
+		envKey := strings.ToUpper(p.Key()) + "_PDF_PATH"
 		if path := os.Getenv(envKey); path != "" {
-			pdfPaths[p.Key] = path
-		} else if p.DefaultPDFPath != "" {
-			pdfPaths[p.Key] = p.DefaultPDFPath
+			pdfPaths[p.Key()] = path
+		} else if p.DefaultPDFPath() != "" {
+			pdfPaths[p.Key()] = p.DefaultPDFPath()
 		}
 	}
 	return rates.Config{PDFPaths: pdfPaths}
@@ -144,21 +146,28 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 	// Build rate fetching service
 	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
-	providers := rates.Providers()
+	// Determine which providers to process
+	var providersToProcess []providerpkg.Provider
+	var skippedResults []ProviderResult
+
+	var allProviders []providerpkg.Provider
+	for _, p := range electricproviders.GetAll() {
+		allProviders = append(allProviders, p)
+	}
+	for _, p := range waterproviders.GetAll() {
+		allProviders = append(allProviders, p)
+	}
+
 	jobName := "batch_refresh"
 	started := time.Now()
 
-	// Determine which providers to process
-	var providersToProcess []rates.ProviderDescriptor
-	var skippedResults []ProviderResult
-
-	for _, p := range providers {
+	for _, p := range allProviders {
 		// Check for fresh cache
 		if cfg.CacheTTL > 0 {
-			if isFresh, reason := isCacheFresh(ctx, st, p.Key, cfg.CacheTTL); isFresh {
-				log.Printf("batch: skipping %s (cache fresh: %s)", p.Key, reason)
+			if isFresh, reason := isCacheFresh(ctx, st, p.Key(), cfg.CacheTTL); isFresh {
+				log.Printf("batch: skipping %s (cache fresh: %s)", p.Key(), reason)
 				skippedResults = append(skippedResults, ProviderResult{
-					Provider:   p.Key,
+					Provider:   p.Key(),
 					Success:    true,
 					Skipped:    true,
 					SkipReason: reason,
@@ -169,11 +178,11 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 
 		// Check for resumed batch progress
 		if cfg.ResumeFromProgress {
-			progress, _ := st.GetBatchProgress(ctx, cfg.BatchID, p.Key)
+			progress, _ := st.GetBatchProgress(ctx, cfg.BatchID, p.Key())
 			if progress != nil && progress.Status == "completed" {
-				log.Printf("batch: skipping %s (already completed in this batch)", p.Key)
+				log.Printf("batch: skipping %s (already completed in this batch)", p.Key())
 				skippedResults = append(skippedResults, ProviderResult{
-					Provider:   p.Key,
+					Provider:   p.Key(),
 					Success:    true,
 					Skipped:    true,
 					SkipReason: "already completed in this batch",
@@ -188,7 +197,7 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 		if cfg.ResumeFromProgress {
 			_ = st.SaveBatchProgress(ctx, storage.BatchProgress{
 				BatchID:  cfg.BatchID,
-				Provider: p.Key,
+				Provider: p.Key(),
 				Status:   "pending",
 			})
 		}
@@ -202,7 +211,7 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 	if cfg.MaxConcurrency <= 1 {
 		// Sequential processing with rate limiting
 		for i, p := range providersToProcess {
-			results[i] = refreshProviderWithTracking(ctx, svc, st, p.Key, cfg)
+			results[i] = refreshProviderWithTracking(ctx, svc, st, p, cfg)
 
 			// Rate limiting between providers
 			if i < len(providersToProcess)-1 && cfg.RateLimitDelay > 0 {
@@ -231,13 +240,13 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 			}
 
 			wg.Add(1)
-			go func(idx int, providerKey string) {
+			go func(idx int, prov providerpkg.Provider) {
 				defer wg.Done()
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
-				results[idx] = refreshProviderWithTracking(ctx, svc, st, providerKey, cfg)
-			}(i, p.Key)
+				results[idx] = refreshProviderWithTracking(ctx, svc, st, prov, cfg)
+			}(i, p)
 		}
 		wg.Wait()
 	}
@@ -269,7 +278,7 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 	// Record metrics
 	var runErr error
 	if failCount > 0 {
-		runErr = fmt.Errorf("%d/%d providers failed", failCount, len(providers))
+		runErr = fmt.Errorf("%d/%d providers failed", failCount, len(allProviders))
 	}
 	metrics.UpdateJobMetrics(jobName, started, runErr)
 	dur := time.Since(started)
@@ -281,7 +290,7 @@ func RunBatchOnce(ctx context.Context, driver, dsn string) error {
 	if failCount > 0 {
 		alert := alerting.BatchAlert{
 			JobName:       jobName,
-			TotalCount:    len(providers),
+			TotalCount:    len(allProviders),
 			SuccessCount:  successCount,
 			FailedCount:   failCount,
 			Duration:      dur,
@@ -315,22 +324,22 @@ func isCacheFresh(ctx context.Context, st storage.Storage, provider string, ttl 
 }
 
 // refreshProviderWithTracking wraps refreshProviderWithRetry with progress tracking.
-func refreshProviderWithTracking(ctx context.Context, svc *rates.Service, st storage.Storage, provider string, cfg BatchConfig) ProviderResult {
+func refreshProviderWithTracking(ctx context.Context, svc *rates.Service, st storage.Storage, p providerpkg.Provider, cfg BatchConfig) ProviderResult {
 	// Mark as in-progress
 	_ = st.SaveBatchProgress(ctx, storage.BatchProgress{
 		BatchID:   cfg.BatchID,
-		Provider:  provider,
+		Provider:  p.Key(),
 		Status:    "in_progress",
 		StartedAt: time.Now(),
 	})
 
-	result := refreshProviderWithRetry(ctx, svc, st, provider, cfg)
+	result := refreshProviderWithRetry(ctx, svc, st, p, cfg)
 
 	// Update progress based on result
 	now := time.Now()
 	progress := storage.BatchProgress{
 		BatchID:     cfg.BatchID,
-		Provider:    provider,
+		Provider:    p.Key(),
 		CompletedAt: now,
 		RetryCount:  result.Attempts,
 	}
@@ -350,20 +359,13 @@ func refreshProviderWithTracking(ctx context.Context, svc *rates.Service, st sto
 }
 
 // refreshProviderWithRetry attempts to refresh a provider with retries.
-func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, st storage.Storage, provider string, cfg BatchConfig) ProviderResult {
+func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, st storage.Storage, p providerpkg.Provider, cfg BatchConfig) ProviderResult {
 	result := ProviderResult{
-		Provider: provider,
+		Provider: p.Key(),
 		Attempts: 0,
 	}
 
 	started := time.Now()
-
-	// Check provider type
-	p, ok := rates.GetProvider(provider)
-	if !ok {
-		result.Error = fmt.Errorf("unknown provider: %s", provider)
-		return result
-	}
 
 	for attempt := 0; attempt <= cfg.RetryAttempts; attempt++ {
 		result.Attempts = attempt + 1
@@ -381,19 +383,19 @@ func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, st storag
 			default:
 			}
 
-			if p.Type == rates.ProviderTypeElectric {
+			if p.Type() == providerpkg.ProviderTypeElectric {
 				// Ensure PDF is present/refreshed
-				if _, err := rates.RefreshProviderPDF(p); err != nil {
+				if _, err := svc.RefreshPDF(attemptCtx, p.Key()); err != nil {
 					return fmt.Errorf("refresh pdf: %w", err)
 				}
-				_, err := svc.GetResidential(attemptCtx, provider)
+				_, err := svc.GetElectricResidential(attemptCtx, p.Key())
 				return err
-			} else if p.Type == rates.ProviderTypeWater {
+			} else if p.Type() == providerpkg.ProviderTypeWater {
 				waterSvc := rates.NewWaterServiceWithStorage(st)
-				_, err := waterSvc.ForceRefresh(attemptCtx, provider)
+				_, err := waterSvc.ForceRefresh(attemptCtx, p.Key())
 				return err
 			}
-			return fmt.Errorf("unsupported provider type: %s", p.Type)
+			return fmt.Errorf("unsupported provider type: %s", p.Type())
 		}()
 
 		if err == nil {
@@ -412,7 +414,7 @@ func refreshProviderWithRetry(ctx context.Context, svc *rates.Service, st storag
 		// Wait before retry (unless last attempt)
 		if attempt < cfg.RetryAttempts {
 			log.Printf("batch: %s attempt %d failed, retrying in %s: %v",
-				provider, attempt+1, cfg.RetryDelay, err)
+				p.Key(), attempt+1, cfg.RetryDelay, err)
 			select {
 			case <-ctx.Done():
 				result.Error = ctx.Err()
@@ -440,11 +442,6 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 		return fmt.Errorf("batch: open storage: %w", err)
 	}
 	defer st.Close()
-
-	pg, ok := st.(*storage.PostgresPoolStorage)
-	if !ok {
-		return fmt.Errorf("batch: storage is not PostgresPoolStorage")
-	}
 
 	// Build rate fetching service
 	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
@@ -474,7 +471,7 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 			started := time.Now()
 
 			// ----- ACQUIRE LOCK -----
-			gotLock, err := pg.AcquireAdvisoryLock(ctx, advisoryKey)
+			gotLock, err := st.AcquireAdvisoryLock(ctx, advisoryKey)
 			if err != nil {
 				log.Printf("batch: lock acquire error: %v", err)
 				metrics.UpdateJobMetrics(jobName, started, err)
@@ -489,15 +486,24 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 			func() {
 				defer func() {
 					// always release
-					if _, err := pg.ReleaseAdvisoryLock(ctx, advisoryKey); err != nil {
+					if _, err := st.ReleaseAdvisoryLock(ctx, advisoryKey); err != nil {
 						log.Printf("batch: lock release error: %v", err)
 					}
 				}()
 
 				// ----- EXECUTE BATCH -----
-				for _, p := range rates.Providers() {
-					if _, err := svc.GetResidential(ctx, p.Key); err != nil {
-						log.Printf("batch: provider %s refresh failed: %v", p.Key, err)
+				for _, p := range electricproviders.GetAll() {
+					if _, err := svc.GetElectricResidential(ctx, p.Key()); err != nil {
+						log.Printf("batch: provider %s refresh failed: %v", p.Key(), err)
+						if runErr == nil {
+							runErr = err
+						}
+					}
+				}
+				for _, p := range waterproviders.GetAll() {
+					waterSvc := rates.NewWaterServiceWithStorage(st)
+					if _, err := waterSvc.ForceRefresh(ctx, p.Key()); err != nil {
+						log.Printf("batch: provider %s refresh failed: %v", p.Key(), err)
 						if runErr == nil {
 							runErr = err
 						}
@@ -508,14 +514,14 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 			// ----- METRICS -----
 			metrics.UpdateJobMetrics(jobName, started, runErr)
 
-			// (Optional enhancement: Save to scheduled_jobs through pg.UpdateScheduledJob)
+			// (Optional enhancement: Save to scheduled_jobs through st.UpdateScheduledJob)
 			dur := time.Since(started)
 			errMsg := ""
 			success := runErr == nil
 			if runErr != nil {
 				errMsg = runErr.Error()
 			}
-			if err := pg.UpdateScheduledJob(ctx, jobName, started, dur, success, errMsg); err != nil {
+			if err := st.UpdateScheduledJob(ctx, jobName, started, dur, success, errMsg); err != nil {
 				log.Printf("batch: update scheduled_jobs failed: %v", err)
 			}
 
@@ -528,28 +534,7 @@ func RunBatch(ctx context.Context, driver, dsn string) error {
 	}
 }
 
-// ForceRefreshProvider bypasses the cache and forces a fresh PDF parse for a provider.
-// This is useful for manual refreshes triggered by the UI.
-func ForceRefreshProvider(ctx context.Context, st storage.Storage, provider string) (*rates.RatesResponse, error) {
-	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
-	// Force refresh by calling the internal method that always parses the PDF
-	resp, err := svc.ForceRefresh(ctx, provider)
-	if err != nil {
-		return nil, err
-	}
-
-	// Save to storage
-	if payload, err := json.Marshal(resp); err == nil {
-		_ = st.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
-			Provider:  provider,
-			Payload:   payload,
-			FetchedAt: time.Now(),
-		})
-	}
-
-	return resp, nil
-}
 
 // StartupRefreshConfig controls startup refresh behavior.
 type StartupRefreshConfig struct {
@@ -672,27 +657,34 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 	log.Printf("startup-refresh: starting with %d workers (cache_ttl=%s, timeout=%s)",
 		cfg.NumWorkers, cfg.CacheTTL, cfg.ProviderTimeout)
 
-	providers := rates.Providers()
+	var allProviders []providerpkg.Provider
+	for _, p := range electricproviders.GetAll() {
+		allProviders = append(allProviders, p)
+	}
+	for _, p := range waterproviders.GetAll() {
+		allProviders = append(allProviders, p)
+	}
+
 	svc := rates.NewServiceWithStorage(buildRatesConfig(), st)
 
 	// Identify providers that need refresh
-	var needsRefresh []rates.ProviderDescriptor
-	for _, p := range providers {
-		snap, err := st.GetRatesSnapshot(ctx, p.Key)
+	var needsRefresh []providerpkg.Provider
+	for _, p := range allProviders {
+		snap, err := st.GetRatesSnapshot(ctx, p.Key())
 		if err != nil || snap == nil || len(snap.Payload) == 0 {
-			log.Printf("startup-refresh: %s needs refresh (no cached data)", p.Key)
+			log.Printf("startup-refresh: %s needs refresh (no cached data)", p.Key())
 			needsRefresh = append(needsRefresh, p)
 			continue
 		}
 
 		age := time.Since(snap.FetchedAt)
 		if age >= cfg.CacheTTL {
-			log.Printf("startup-refresh: %s needs refresh (cache expired: %s ago, TTL: %s)", p.Key, age.Round(time.Second), cfg.CacheTTL)
+			log.Printf("startup-refresh: %s needs refresh (cache expired: %s ago, TTL: %s)", p.Key(), age.Round(time.Second), cfg.CacheTTL)
 			needsRefresh = append(needsRefresh, p)
 			continue
 		}
 
-		log.Printf("startup-refresh: %s cache is fresh (%s ago)", p.Key, age.Round(time.Second))
+		log.Printf("startup-refresh: %s cache is fresh (%s ago)", p.Key(), age.Round(time.Second))
 	}
 
 	if len(needsRefresh) == 0 {
@@ -703,7 +695,7 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 	log.Printf("startup-refresh: queuing %d providers for refresh: %v", len(needsRefresh), providerKeys(needsRefresh))
 
 	// Create work queue
-	workQueue := make(chan rates.ProviderDescriptor, len(needsRefresh))
+	workQueue := make(chan providerpkg.Provider, len(needsRefresh))
 	for _, p := range needsRefresh {
 		workQueue <- p
 	}
@@ -729,7 +721,7 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 				// Check if context is cancelled
 				select {
 				case <-ctx.Done():
-					results <- workerResult{provider: provider.Key, err: ctx.Err()}
+					results <- workerResult{provider: provider.Key(), err: ctx.Err()}
 					continue
 				default:
 				}
@@ -743,7 +735,7 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 
 				duration := time.Since(start)
 				results <- workerResult{
-					provider: provider.Key,
+					provider: provider.Key(),
 					success:  err == nil,
 					duration: duration,
 					err:      err,
@@ -751,10 +743,10 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 
 				if err != nil {
 					log.Printf("startup-refresh: worker-%d: %s failed after %s: %v",
-						workerID, provider.Key, duration.Round(time.Millisecond), err)
+						workerID, provider.Key(), duration.Round(time.Millisecond), err)
 				} else {
 					log.Printf("startup-refresh: worker-%d: %s completed in %s",
-						workerID, provider.Key, duration.Round(time.Millisecond))
+						workerID, provider.Key(), duration.Round(time.Millisecond))
 				}
 			}
 		}(i)
@@ -779,41 +771,28 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 }
 
 // refreshProvider handles refreshing a single provider's data.
-func refreshProvider(ctx context.Context, svc *rates.Service, st storage.Storage, provider rates.ProviderDescriptor) error {
-	// First, try to discover and download the PDF
-	if _, err := rates.RefreshProviderPDF(provider); err != nil {
-		log.Printf("startup-refresh: %s PDF discovery failed: %v", provider.Key, err)
-		// Continue anyway - maybe the PDF already exists locally
-	}
-
-	// Parse and cache the rates
-	resp, err := svc.ForceRefresh(ctx, provider.Key)
-	if err != nil {
+// refreshProvider refreshes a single provider (helper for startup refresh).
+func refreshProvider(ctx context.Context, svc *rates.Service, st storage.Storage, p providerpkg.Provider) error {
+	if p.Type() == providerpkg.ProviderTypeElectric {
+		// Ensure PDF is present/refreshed
+		if _, err := svc.RefreshPDF(ctx, p.Key()); err != nil {
+			return fmt.Errorf("refresh pdf: %w", err)
+		}
+		_, err := svc.GetElectricResidential(ctx, p.Key())
+		return err
+	} else if p.Type() == providerpkg.ProviderTypeWater {
+		waterSvc := rates.NewWaterServiceWithStorage(st)
+		_, err := waterSvc.ForceRefresh(ctx, p.Key())
 		return err
 	}
-
-	// Save to storage
-	payload, err := json.Marshal(resp)
-	if err != nil {
-		return fmt.Errorf("marshal response: %w", err)
-	}
-
-	if err := st.SaveRatesSnapshot(ctx, storage.RatesSnapshot{
-		Provider:  provider.Key,
-		Payload:   payload,
-		FetchedAt: time.Now(),
-	}); err != nil {
-		return fmt.Errorf("save snapshot: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("unsupported provider type: %s", p.Type())
 }
 
-// providerKeys extracts provider keys from a slice of ProviderDescriptors.
-func providerKeys(providers []rates.ProviderDescriptor) []string {
-	keys := make([]string, len(providers))
-	for i, p := range providers {
-		keys[i] = p.Key
+// providerKeys extracts provider keys from a slice of Providers.
+func providerKeys(provs []providerpkg.Provider) []string {
+	keys := make([]string, len(provs))
+	for i, p := range provs {
+		keys[i] = p.Key()
 	}
 	return keys
 }

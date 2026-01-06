@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 )
 
 // MemoryStorage is an in-memory Storage implementation, useful for tests and
@@ -17,7 +18,7 @@ type MemoryStorage struct {
 	snaps     map[string]storage.RatesSnapshot
 }
 
-// New seeds the in-memory store from rates.Providers() so that default
+// New seeds the in-memory store from registered providers so that default
 // providers are available without needing a database.
 func New() *MemoryStorage {
 	m := &MemoryStorage{
@@ -25,13 +26,20 @@ func New() *MemoryStorage {
 		snaps:     make(map[string]storage.RatesSnapshot),
 	}
 
-	for _, p := range rates.Providers() {
-		m.providers[p.Key] = storage.Provider{
-			Key:            p.Key,
-			Name:           p.Name,
-			LandingURL:     p.LandingURL,
-			DefaultPDFPath: p.DefaultPDFPath,
-			Notes:          p.Notes,
+	for _, p := range electricproviders.GetAll() {
+		m.providers[p.Key()] = storage.Provider{
+			Key:            p.Key(),
+			Name:           p.Name(),
+			LandingURL:     p.LandingURL(),
+			DefaultPDFPath: p.DefaultPDFPath(),
+		}
+	}
+	for _, p := range waterproviders.GetAll() {
+		m.providers[p.Key()] = storage.Provider{
+			Key:            p.Key(),
+			Name:           p.Name(),
+			LandingURL:     p.LandingURL(),
+			DefaultPDFPath: p.DefaultPDFPath(),
 		}
 	}
 

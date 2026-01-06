@@ -38,14 +38,15 @@ function RequireEmailVerification({ children }: { children: JSX.Element }) {
 }
 
 function OnboardingCheck({ children }: { children: JSX.Element }) {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   
   // Show wizard if user is admin and hasn't completed onboarding
+  // Wait for loading to finish to ensure we have the latest user state from server
   // We render the children (app content) behind the modal
   return (
     <>
       {children}
-      {user && user.role === 'admin' && !user.onboarding_completed && (
+      {!isLoading && user && user.role === 'admin' && !user.onboarding_completed && (
         <OnboardingWizard />
       )}
     </>

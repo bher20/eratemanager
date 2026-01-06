@@ -1,8 +1,9 @@
-package rates
+package shared
 
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -82,4 +83,20 @@ func HTTPClientWithExtraCerts(timeout time.Duration) *http.Client {
 // which has an incomplete certificate chain (missing intermediate certs).
 func WHUDHTTPClient() *http.Client {
 	return HTTPClientWithExtraCerts(30 * time.Second)
+}
+
+// DownloadFile downloads a file from url to path.
+func DownloadFile(url, path string) error {
+	client := NewHTTPClient(30 * time.Second)
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	return WriteFileAtomically(path, resp.Body)
 }

@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
+	// _ "modernc.org/sqlite" // Removed to avoid conflict with glebarez/sqlite used by GORM
 )
 
 //go:embed migrations

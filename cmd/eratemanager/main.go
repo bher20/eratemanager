@@ -12,6 +12,12 @@ import (
 	"github.com/bher20/eratemanager/internal/cron"
 	dbmigrate "github.com/bher20/eratemanager/internal/migrate"
 	"github.com/bher20/eratemanager/internal/storage"
+    
+	// Register providers
+	_ "github.com/bher20/eratemanager/pkg/providers/electricproviders/cemc"
+	_ "github.com/bher20/eratemanager/pkg/providers/electricproviders/kub"
+	_ "github.com/bher20/eratemanager/pkg/providers/electricproviders/nes"
+	_ "github.com/bher20/eratemanager/pkg/providers/waterproviders/whud"
 )
 
 func main() {

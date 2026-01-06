@@ -1,4 +1,4 @@
-package rates
+package shared
 
 import (
 	"errors"
@@ -16,13 +16,13 @@ import (
 var PDFDiscoveryTimeout = 10 * time.Second
 
 // DiscoverPDFURL fetches the provider's landing page and discovers the best PDF URL.
-func DiscoverPDFURL(p ProviderDescriptor) (string, error) {
-	if p.LandingURL == "" {
-		return "", fmt.Errorf("provider %q has no LandingURL", p.Key)
+func DiscoverPDFURL(key, landingURL string) (string, error) {
+	if landingURL == "" {
+		return "", fmt.Errorf("provider %q has no LandingURL", key)
 	}
 
 	client := &http.Client{Timeout: PDFDiscoveryTimeout}
-	resp, err := client.Get(p.LandingURL)
+	resp, err := client.Get(landingURL)
 	if err != nil {
 		return "", fmt.Errorf("fetch landing url: %w", err)
 	}
@@ -37,7 +37,7 @@ func DiscoverPDFURL(p ProviderDescriptor) (string, error) {
 		return "", fmt.Errorf("read landing body: %w", err)
 	}
 
-	return discoverPDFURLFromHTML(p.LandingURL, string(body))
+	return discoverPDFURLFromHTML(landingURL, string(body))
 }
 
 func discoverPDFURLFromHTML(baseURL, html string) (string, error) {
@@ -164,8 +164,8 @@ func htmlUnescape(s string) string {
 }
 
 // RefreshProviderPDF discovers and downloads the provider PDF into DefaultPDFPath.
-func RefreshProviderPDF(p ProviderDescriptor) (string, error) {
-	pdfURL, err := DiscoverPDFURL(p)
+func RefreshProviderPDF(key, landingURL, defaultPDFPath string) (string, error) {
+	pdfURL, err := DiscoverPDFURL(key, landingURL)
 	if err != nil {
 		return "", err
 	}
@@ -180,11 +180,11 @@ func RefreshProviderPDF(p ProviderDescriptor) (string, error) {
 		return "", fmt.Errorf("pdf download returned status %d", resp.StatusCode)
 	}
 
-	if p.DefaultPDFPath == "" {
-		return "", fmt.Errorf("provider %q has no DefaultPDFPath configured", p.Key)
+	if defaultPDFPath == "" {
+		return "", fmt.Errorf("provider %q has no DefaultPDFPath configured", key)
 	}
 
-	if err := writeFileAtomically(p.DefaultPDFPath, resp.Body); err != nil {
+	if err := WriteFileAtomically(defaultPDFPath, resp.Body); err != nil {
 		return "", err
 	}
 	return pdfURL, nil

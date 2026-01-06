@@ -1,4 +1,4 @@
-package rates
+package cemc
 
 import (
 	"bytes"
@@ -7,21 +7,39 @@ import (
 	"regexp"
 	"time"
 
-	pdf "github.com/ledongthuc/pdf"
+	"github.com/bher20/eratemanager/pkg/providers"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/shared"
+	"github.com/ledongthuc/pdf"
 )
 
 func init() {
-	RegisterParser(ParserConfig{
-		Key:       "cemc",
-		Name:      "Cumberland Electric Membership Corporation",
-		ParsePDF:  ParseCEMCRatesFromPDF,
-		ParseText: ParseCEMCRatesFromText,
-	})
+	electricproviders.Register(&Provider{})
 }
 
-// ParseCEMCRatesFromPDF opens a CEMC rates PDF at the given path, extracts
-// text, and delegates to ParseCEMCRatesFromText.
-func ParseCEMCRatesFromPDF(path string) (*RatesResponse, error) {
+type Provider struct{}
+
+func (p *Provider) Key() string {
+	return "cemc"
+}
+
+func (p *Provider) Name() string {
+	return "Cumberland Electric Membership Corporation"
+}
+
+func (p *Provider) Type() providers.ProviderType {
+	return providers.ProviderTypeElectric
+}
+
+func (p *Provider) LandingURL() string {
+	return "https://cemc.org/my-account/#residential-rates"
+}
+
+func (p *Provider) DefaultPDFPath() string {
+	return "rates_cemc.pdf"
+}
+
+func (p *Provider) ParsePDF(path string) (*electricproviders.ElectricRatesResponse, error) {
 	f, r, err := pdf.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open pdf: %w", err)
@@ -38,12 +56,10 @@ func ParseCEMCRatesFromPDF(path string) (*RatesResponse, error) {
 		return nil, fmt.Errorf("read pdf text: %w", err)
 	}
 
-	return ParseCEMCRatesFromText(buf.String())
+	return p.ParseText(buf.String())
 }
 
-// ParseCEMCRatesFromText parses a plain-text representation of the CEMC
-// rates PDF and extracts the residential standard fields using regex.
-func ParseCEMCRatesFromText(text string) (*RatesResponse, error) {
+func (p *Provider) ParseText(text string) (*electricproviders.ElectricRatesResponse, error) {
 	// Try to narrow to the residential RS section.
 	rsRe := regexp.MustCompile(`RESIDENTIAL RATE[^\n]*SCHEDULE RS(?s)(.+?)(?:SUPPLEMENTAL RESIDENTIAL RATE|$)`)
 	rsMatch := rsRe.FindStringSubmatch(text)
@@ -58,9 +74,9 @@ func ParseCEMCRatesFromText(text string) (*RatesResponse, error) {
 	energyRe := regexp.MustCompile(`Energy Charge:\s*(\d+\.\d+|\.\d+|\d+)\$?\s*per kWh`)
 	fuelRe := regexp.MustCompile(`TVA Fuel Charge:\s*(\d+\.\d+|\.\d+|\d+)\$?\s*per kWh`)
 
-	customerCharge := parseFirstFloat(custRe, rsSection)
-	energyRate := parseFirstFloat(energyRe, rsSection)
-	fuelRate := parseFirstFloat(fuelRe, rsSection)
+	customerCharge := shared.ParseFirstFloat(custRe, rsSection)
+	energyRate := shared.ParseFirstFloat(energyRe, rsSection)
+	fuelRate := shared.ParseFirstFloat(fuelRe, rsSection)
 
 	energyCents := energyRate * 100
 	fuelCents := fuelRate * 100
@@ -68,13 +84,13 @@ func ParseCEMCRatesFromText(text string) (*RatesResponse, error) {
 	now := time.Now().UTC()
 	rawCopy := rsSection
 
-	resp := &RatesResponse{
-		Utility:   "CEMC",
+	resp := &electricproviders.ElectricRatesResponse{
+		Utility:   "Cumberland Electric Membership Corporation",
 		Source:    "CEMC Current Rates PDF",
 		SourceURL: "https://cemc.org/my-account/#residential-rates",
 		FetchedAt: now,
-		Rates: Rates{
-			ResidentialStandard: ResidentialStandard{
+		ElectricRates: electricproviders.ElectricRates{
+			ResidentialStandard: electricproviders.ResidentialStandard{
 				IsPresent:                true,
 				CustomerChargeMonthlyUSD: customerCharge,
 				EnergyRateUSDPerKWh:      energyRate,
@@ -87,14 +103,4 @@ func ParseCEMCRatesFromText(text string) (*RatesResponse, error) {
 	}
 
 	return resp, nil
-}
-
-func parseFirstFloat(re *regexp.Regexp, s string) float64 {
-	m := re.FindStringSubmatch(s)
-	if len(m) < 2 {
-		return 0
-	}
-	var v float64
-	fmt.Sscanf(m[1], "%f", &v)
-	return v
 }

@@ -1,18 +1,17 @@
-package rates
+package electricproviders
 
 import "time"
 
-// RatesResponse matches the JSON schema used by the original Python service
-// and consumed by the Home Assistant integration.
-type RatesResponse struct {
-	Utility   string    `json:"utility"`
-	Source    string    `json:"source"`
-	SourceURL string    `json:"source_url"`
-	FetchedAt time.Time `json:"fetched_at"`
-	Rates     Rates     `json:"rates"`
+// ElectricRatesResponse matches the JSON schema used by the v2 API.
+type ElectricRatesResponse struct {
+	Utility       string        `json:"utility"`
+	Source        string        `json:"source"`
+	SourceURL     string        `json:"source_url"`
+	FetchedAt     time.Time     `json:"fetched_at"`
+	ElectricRates ElectricRates `json:"electric_rates"`
 }
 
-type Rates struct {
+type ElectricRates struct {
 	ResidentialStandard     ResidentialStandard     `json:"residential_standard"`
 	ResidentialSupplemental ResidentialSupplemental `json:"residential_supplemental"`
 	ResidentialSeasonal     ResidentialSeasonal     `json:"residential_seasonal"`

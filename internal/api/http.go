@@ -16,27 +16,36 @@ import (
 
 	"github.com/bher20/eratemanager/internal/api/swagger"
 	"github.com/bher20/eratemanager/internal/auth"
-	"github.com/bher20/eratemanager/internal/metrics"
 	migrate "github.com/bher20/eratemanager/internal/migrate"
 	"github.com/bher20/eratemanager/internal/notification"
 	"github.com/bher20/eratemanager/internal/rates"
 	"github.com/bher20/eratemanager/internal/storage"
 	"github.com/bher20/eratemanager/internal/version"
 	"github.com/bher20/eratemanager/internal/ui"
+	"github.com/bher20/eratemanager/pkg/providers/electricproviders"
+	"github.com/bher20/eratemanager/pkg/providers/waterproviders"
 	"github.com/robfig/cron/v3"
 )
+
+// @title eRateManager API
+// @version 2.0
+// @description API for eRateManager
+// @BasePath /
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authorization
 
 // NewMux constructs the HTTP mux, wiring in the rates service, metrics, and health endpoints.
 func NewMux() *http.ServeMux {
 	// Build PDF paths map from environment variables and provider defaults
 	pdfPaths := make(map[string]string)
-	for _, p := range rates.Providers() {
+	for _, p := range electricproviders.GetAll() {
 		// Check for env var override first (e.g., CEMC_PDF_PATH, NES_PDF_PATH)
-		envKey := strings.ToUpper(p.Key) + "_PDF_PATH"
+		envKey := strings.ToUpper(p.Key()) + "_PDF_PATH"
 		if path := os.Getenv(envKey); path != "" {
-			pdfPaths[p.Key] = path
-		} else if p.DefaultPDFPath != "" {
-			pdfPaths[p.Key] = p.DefaultPDFPath
+			pdfPaths[p.Key()] = path
+		} else if p.DefaultPDFPath() != "" {
+			pdfPaths[p.Key()] = p.DefaultPDFPath()
 		}
 	}
 	cfg := rates.Config{PDFPaths: pdfPaths}
@@ -67,15 +76,23 @@ func NewMux() *http.ServeMux {
 	var st storage.Storage
 	var err error
 	if driver == "memory" {
-		// Convert rates.ProviderDescriptor -> storage.Provider
+		// Convert providers -> storage.Provider
 		var pList []storage.Provider
-		for _, pd := range rates.Providers() {
+		for _, p := range electricproviders.GetAll() {
 			pList = append(pList, storage.Provider{
-				Key:            pd.Key,
-				Name:           pd.Name,
-				LandingURL:     pd.LandingURL,
-				DefaultPDFPath: pd.DefaultPDFPath,
-				Notes:          pd.Notes,
+				Key:            p.Key(),
+				Name:           p.Name(),
+				LandingURL:     p.LandingURL(),
+				DefaultPDFPath: p.DefaultPDFPath(),
+				// Notes:          p.Notes(), // Notes not yet in interface
+			})
+		}
+		for _, p := range waterproviders.GetAll() {
+			pList = append(pList, storage.Provider{
+				Key:            p.Key(),
+				Name:           p.Name(),
+				LandingURL:     p.LandingURL(),
+				DefaultPDFPath: p.DefaultPDFPath(),
 			})
 		}
 		st = storage.NewMemoryWithProviders(pList)
@@ -978,17 +995,16 @@ func NewMux() *http.ServeMux {
 		_, _ = w.Write([]byte("live"))
 	})
 
-	// Rates API - Electric (includes refresh endpoint)
-	electricHandler := http.Handler(handleElectricRates(svc, st, authSvc))
-	if authSvc != nil {
-		electricHandler = authSvc.Middleware(authSvc.RequirePermission("rates", "read", electricHandler))
+	// Initialize Water Service
+	var waterSvc *rates.WaterService
+	if st != nil {
+		waterSvc = rates.NewWaterServiceWithStorage(st)
+	} else {
+		waterSvc = rates.NewWaterService()
 	}
-	mux.Handle("/rates/electric/", electricHandler)
 
-	RegisterProvidersHandler(mux, authSvc)
-
-	// Rates API - Water
-	RegisterWaterHandlers(mux, st, authSvc)
+	// Register V2 Routes
+	RegisterV2Routes(mux, svc, waterSvc, st, authSvc)
 
 	// System Info
 	mux.HandleFunc("/system/info", func(w http.ResponseWriter, r *http.Request) {
@@ -1014,6 +1030,9 @@ func NewMux() *http.ServeMux {
 
 	// Settings API
 	mux.HandleFunc("/settings/refresh-interval", handleRefreshInterval(st))
+	if notifSvc != nil {
+		mux.HandleFunc("/settings/email", handleEmailSettings(notifSvc))
+	}
 
 	// Swagger API documentation
 	mux.Handle("/swagger/", http.StripPrefix("/swagger", swagger.Handler()))
@@ -1031,200 +1050,9 @@ func NewMux() *http.ServeMux {
 	return mux
 }
 
-// handleElectricRates returns a handler that serves /rates/electric/{provider}/residential, /rates/electric/{provider}/pdf, and /rates/electric/{provider}/refresh.
-func handleElectricRates(svc *rates.Service, st storage.Storage, authSvc *auth.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 
-		// Expected paths: /rates/electric/{provider}/residential, /rates/electric/{provider}/pdf, or /rates/electric/{provider}/refresh
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		if len(parts) != 4 || parts[0] != "rates" || parts[1] != "electric" {
-			metrics.RequestErrorsTotal.WithLabelValues("unknown", r.URL.Path, "404").Inc()
-			http.NotFound(w, r)
-			return
-		}
 
-		providerKey := strings.ToLower(parts[2])
-		endpoint := parts[3]
 
-		// Handle refresh
-		if endpoint == "refresh" {
-			if authSvc != nil {
-				token, ok := r.Context().Value(auth.TokenContextKey).(*storage.Token)
-				if !ok {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					return
-				}
-				allowed, err := authSvc.Enforce(token.UserID, "rates", "write")
-				if err != nil {
-					http.Error(w, "Internal Error", http.StatusInternalServerError)
-					return
-				}
-				if !allowed {
-					http.Error(w, "Forbidden", http.StatusForbidden)
-					return
-				}
-			}
-			handleElectricRefresh(w, r, providerKey, st, start)
-			return
-		}
-
-		// Handle PDF download
-		if endpoint == "pdf" {
-			labelsPath := "/rates/electric/pdf"
-			defer func() {
-				dur := time.Since(start).Seconds()
-				metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
-			}()
-			metrics.RequestsTotal.WithLabelValues(providerKey).Inc()
-
-			p, ok := rates.GetProvider(providerKey)
-			if !ok {
-				metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
-				http.NotFound(w, r)
-				return
-			}
-
-			pdfPath := p.DefaultPDFPath
-			if pdfPath == "" {
-				metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
-				http.Error(w, "no PDF configured for this provider", http.StatusNotFound)
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/pdf")
-			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s_rates.pdf", providerKey))
-			http.ServeFile(w, r, pdfPath)
-			return
-		}
-
-		// Handle residential rates
-		if endpoint != "residential" {
-			metrics.RequestErrorsTotal.WithLabelValues("unknown", r.URL.Path, "404").Inc()
-			http.NotFound(w, r)
-			return
-		}
-
-		labelsProvider := providerKey
-		labelsPath := "/rates/residential"
-
-		defer func() {
-			dur := time.Since(start).Seconds()
-			metrics.RequestDurationSeconds.WithLabelValues(labelsProvider, labelsPath).Observe(dur)
-		}()
-
-		metrics.RequestsTotal.WithLabelValues(labelsProvider).Inc()
-
-		resp, err := svc.GetResidential(r.Context(), providerKey)
-		if err != nil {
-			log.Printf("get residential rates for %s failed: %v", providerKey, err)
-			errMsg := err.Error()
-
-			// Check for specific error types and return appropriate status codes
-			if strings.Contains(errMsg, "PDF not found") || strings.Contains(errMsg, "no such file") {
-				metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "404").Inc()
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(map[string]string{
-					"error":   "rates_not_available",
-					"message": fmt.Sprintf("Rate data for %s is not yet available. Please click 'Refresh Rates' to fetch the latest data.", providerKey),
-				})
-				return
-			}
-			if strings.Contains(errMsg, "unknown provider") || strings.Contains(errMsg, "no parser registered") {
-				metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "404").Inc()
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(map[string]string{
-					"error":   "provider_not_found",
-					"message": fmt.Sprintf("Provider '%s' is not configured.", providerKey),
-				})
-				return
-			}
-
-			metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "500").Inc()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{
-				"error":   "internal_error",
-				"message": "An unexpected error occurred while fetching rates.",
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Printf("encode response failed: %v", err)
-			metrics.RequestErrorsTotal.WithLabelValues(labelsProvider, labelsPath, "500").Inc()
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-	}
-}
-
-// handleElectricRefresh handles the refresh endpoint for electric providers.
-func handleElectricRefresh(w http.ResponseWriter, r *http.Request, providerKey string, st storage.Storage, start time.Time) {
-	labelsPath := "/rates/electric/refresh"
-	defer func() {
-		dur := time.Since(start).Seconds()
-		metrics.RequestDurationSeconds.WithLabelValues(providerKey, labelsPath).Observe(dur)
-	}()
-
-	metrics.RequestsTotal.WithLabelValues(providerKey).Inc()
-
-	p, ok := rates.GetProvider(providerKey)
-	if !ok {
-		log.Printf("unknown provider %q for refresh", providerKey)
-		metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "404").Inc()
-		http.NotFound(w, r)
-		return
-	}
-
-	// Step 1: Download the latest PDF
-	pdfURL, err := rates.RefreshProviderPDF(p)
-
-	resp := RefreshResponse{
-		Provider: providerKey,
-		PDFURL:   pdfURL,
-		Path:     p.DefaultPDFPath,
-	}
-
-	if err != nil {
-		log.Printf("refresh PDF for %s failed: %v", providerKey, err)
-		resp.Status = "error"
-		resp.Error = err.Error()
-		metrics.RequestErrorsTotal.WithLabelValues(providerKey, labelsPath, "500").Inc()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Step 2: Parse the PDF to extract rates
-	ratesResp, parseErr := rates.ParseProviderPDF(providerKey)
-	if parseErr != nil {
-		log.Printf("parse PDF for %s failed: %v", providerKey, parseErr)
-		resp.Status = "partial"
-		resp.Error = "PDF downloaded but parsing failed: " + parseErr.Error()
-	} else {
-		resp.Status = "success"
-		resp.Rates = ratesResp
-
-		// Save to storage if available
-		if st != nil && ratesResp != nil {
-			payload, _ := json.Marshal(ratesResp)
-			_ = st.SaveRatesSnapshot(r.Context(), storage.RatesSnapshot{
-				Provider:  providerKey,
-				Payload:   payload,
-				FetchedAt: ratesResp.FetchedAt,
-			})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
 
 func handleRefreshInterval(st storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1267,4 +1095,42 @@ func handleRefreshInterval(st storage.Storage) http.HandlerFunc {
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handleEmailSettings(svc *notification.Service) http.HandlerFunc {
+return func(w http.ResponseWriter, r *http.Request) {
+ctx := r.Context()
+if r.Method == http.MethodGet {
+cfg, err := svc.GetConfig(ctx)
+if err != nil {
+http.Error(w, err.Error(), http.StatusInternalServerError)
+return
+}
+if cfg == nil {
+// Return default empty config
+cfg = &storage.EmailConfig{
+Provider: "smtp",
+Port:     587,
+Enabled:  true,
+}
+}
+w.Header().Set("Content-Type", "application/json")
+json.NewEncoder(w).Encode(cfg)
+return
+}
+if r.Method == http.MethodPut {
+var cfg storage.EmailConfig
+if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+http.Error(w, err.Error(), http.StatusBadRequest)
+return
+}
+if err := svc.SaveConfig(ctx, cfg); err != nil {
+http.Error(w, err.Error(), http.StatusInternalServerError)
+return
+}
+w.WriteHeader(http.StatusOK)
+return
+}
+http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
 }
