@@ -743,10 +743,10 @@ func RunStartupRefresh(ctx context.Context, st storage.Storage) {
 
 				if err != nil {
 					log.Printf("startup-refresh: worker-%d: %s failed after %s: %v",
-						workerID, provider.Key, duration.Round(time.Millisecond), err)
+						workerID, provider.Key(), duration.Round(time.Millisecond), err)
 				} else {
 					log.Printf("startup-refresh: worker-%d: %s completed in %s",
-						workerID, provider.Key, duration.Round(time.Millisecond))
+						workerID, provider.Key(), duration.Round(time.Millisecond))
 				}
 			}
 		}(i)
